@@ -93,7 +93,7 @@ _IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C SharedShadowHookData* ShAllocateShar
 _IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C void ShFreeSharedShadowHookData(_In_ SharedShadowHookData* shared_sh_data);
 _IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C NTSTATUS ShEnableHooks();
 _IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C NTSTATUS ShDisableHooks();
-_IRQL_requires_min_(DISPATCH_LEVEL) NTSTATUS ShEnablePageShadowing(_In_ EptData* ept_data, _In_ const SharedShadowHookData* shared_sh_data);
+_IRQL_requires_min_(DISPATCH_LEVEL) void ShEnablePageShadowing(_In_ EptData* ept_data, _In_ const SharedShadowHookData* shared_sh_data);
 _IRQL_requires_min_(DISPATCH_LEVEL) void ShVmCallDisablePageShadowing(_In_ EptData* ept_data, _In_ const SharedShadowHookData* shared_sh_data);
 _IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C bool ShInstallHook(_In_ SharedShadowHookData* shared_sh_data, _In_ void* address, _In_ ShadowHookTarget* target);
 _IRQL_requires_min_(DISPATCH_LEVEL) bool ShHandleBreakpoint(_In_ ShadowHookData* sh_data, _In_ const SharedShadowHookData* shared_sh_data, _In_ void* guest_ip);

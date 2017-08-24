@@ -204,7 +204,7 @@ template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler t
     {
         if (target.handler == handler)
         {
-            NT_ASSERT(target.original_call);
+            NT_ASSERT(target.original_call);//ÓÐÊ±target.original_call == 0¡£
             return reinterpret_cast<T>(target.original_call);
         }
     }
