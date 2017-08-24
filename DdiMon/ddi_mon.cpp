@@ -6,26 +6,11 @@
 
 #include "ddi_mon.h"
 
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C static void DdimonpFreeAllocatedTrampolineRegions();
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C static NTSTATUS DdimonpEnumExportedSymbols(_In_ ULONG_PTR base_address, _In_ EnumExportedSymbolsCallbackType callback, _In_opt_ void* context);
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C static bool DdimonpEnumExportedSymbolsCallback(
-        _In_ ULONG index, _In_ ULONG_PTR base_address, _In_ PIMAGE_EXPORT_DIRECTORY directory, _In_ ULONG_PTR directory_base, _In_ ULONG_PTR directory_end, _In_opt_ void* context);
-static std::array<char, 5> DdimonpTagToString(_In_ ULONG tag_value);
-template <typename T> static T DdimonpFindOrignal(_In_ T handler);
 static VOID DdimonpHandleExQueueWorkItem(_Inout_ PWORK_QUEUE_ITEM work_item, _In_ WORK_QUEUE_TYPE queue_type);
 static PVOID DdimonpHandleExAllocatePoolWithTag(_In_ POOL_TYPE pool_type, _In_ SIZE_T number_of_bytes, _In_ ULONG tag);
 static VOID DdimonpHandleExFreePool(_Pre_notnull_ PVOID p);
 static VOID DdimonpHandleExFreePoolWithTag(_Pre_notnull_ PVOID p, _In_ ULONG tag);
 static NTSTATUS DdimonpHandleNtQuerySystemInformation(_In_ SystemInformationClass SystemInformationClass, _Inout_ PVOID SystemInformation, _In_ ULONG SystemInformationLength, _Out_opt_ PULONG ReturnLength);
-
-#if defined(ALLOC_PRAGMA)
-#pragma alloc_text(INIT, DdimonInitialization)
-#pragma alloc_text(INIT, DdimonpEnumExportedSymbols)
-#pragma alloc_text(INIT, DdimonpEnumExportedSymbolsCallback)
-#pragma alloc_text(PAGE, DdimonTermination)
-#pragma alloc_text(PAGE, DdimonpFreeAllocatedTrampolineRegions)
-#endif
-
 
 // Defines where to install shadow hooks and their handlers
 //
@@ -46,40 +31,6 @@ static ShadowHookTarget g_ddimonp_hook_targets[] = {
     {RTL_CONSTANT_STRING(L"EXFREEPOOLWITHTAG"),          DdimonpHandleExFreePoolWithTag,         nullptr},
     {RTL_CONSTANT_STRING(L"NTQUERYSYSTEMINFORMATION"),   DdimonpHandleNtQuerySystemInformation,  nullptr},
 };
-
-
-_Use_decl_annotations_ EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// Initializes DdiMon
-{
-    auto nt_base = UtilPcToFileHeader(KdDebuggerEnabled);// Get a base address of ntoskrnl
-    if (!nt_base) {
-        return STATUS_UNSUCCESSFUL;
-    }
-
-    // Install hooks by enumerating exports of ntoskrnl, but not activate them yet
-    auto status = DdimonpEnumExportedSymbols(reinterpret_cast<ULONG_PTR>(nt_base), DdimonpEnumExportedSymbolsCallback, shared_sh_data);
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
-
-    status = ShEnableHooks();// Activate installed hooks
-    if (!NT_SUCCESS(status)) {
-        DdimonpFreeAllocatedTrampolineRegions();
-        return status;
-    }
-
-    return status;
-}
-
-
-_Use_decl_annotations_ EXTERN_C void DdimonTermination()// Terminates DdiMon
-{
-    PAGED_CODE();
-
-    ShDisableHooks();
-    UtilSleep(1000);
-    DdimonpFreeAllocatedTrampolineRegions();
-    HYPERPLATFORM_LOG_INFO("DdiMon has been terminated.");
-}
 
 
 _Use_decl_annotations_ EXTERN_C static void DdimonpFreeAllocatedTrampolineRegions()
@@ -125,13 +76,13 @@ _Use_decl_annotations_ EXTERN_C static NTSTATUS DdimonpEnumExportedSymbols(ULONG
 
 
 _Use_decl_annotations_ EXTERN_C static bool DdimonpEnumExportedSymbolsCallback(
-    ULONG index, 
-    ULONG_PTR base_address, 
-    PIMAGE_EXPORT_DIRECTORY directory, 
-    ULONG_PTR directory_base, 
-    ULONG_PTR directory_end, 
+    ULONG index,
+    ULONG_PTR base_address,
+    PIMAGE_EXPORT_DIRECTORY directory,
+    ULONG_PTR directory_base,
+    ULONG_PTR directory_end,
     void* context)
-// Checks if the export is listed as a hook target, and if so install a hook.
+    // Checks if the export is listed as a hook target, and if so install a hook.
 {
     PAGED_CODE();
 
@@ -145,7 +96,7 @@ _Use_decl_annotations_ EXTERN_C static bool DdimonpEnumExportedSymbolsCallback(
     auto ord = ordinals[index];
     auto export_address = base_address + functions[ord];
     auto export_name = reinterpret_cast<const char*>(base_address + names[index]);
-    
+
     if (UtilIsInBounds(export_address, directory_base, directory_end)) {// Check if an export is forwarded one? If so, ignore it.
         return true;
     }
@@ -174,6 +125,40 @@ _Use_decl_annotations_ EXTERN_C static bool DdimonpEnumExportedSymbolsCallback(
     }
 
     return true;
+}
+
+
+_Use_decl_annotations_ EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// Initializes DdiMon
+{
+    auto nt_base = UtilPcToFileHeader(KdDebuggerEnabled);// Get a base address of ntoskrnl
+    if (!nt_base) {
+        return STATUS_UNSUCCESSFUL;
+    }
+
+    // Install hooks by enumerating exports of ntoskrnl, but not activate them yet
+    auto status = DdimonpEnumExportedSymbols(reinterpret_cast<ULONG_PTR>(nt_base), DdimonpEnumExportedSymbolsCallback, shared_sh_data);
+    if (!NT_SUCCESS(status)) {
+        return status;
+    }
+
+    status = ShEnableHooks();// Activate installed hooks
+    if (!NT_SUCCESS(status)) {
+        DdimonpFreeAllocatedTrampolineRegions();
+        return status;
+    }
+
+    return status;
+}
+
+
+_Use_decl_annotations_ EXTERN_C void DdimonTermination()// Terminates DdiMon
+{
+    PAGED_CODE();
+
+    ShDisableHooks();
+    UtilSleep(1000);
+    DdimonpFreeAllocatedTrampolineRegions();
+    HYPERPLATFORM_LOG_INFO("DdiMon has been terminated.");
 }
 
 
