@@ -30,27 +30,9 @@
 // A callback type for EnumExportedSymbols()
 using EnumExportedSymbolsCallbackType = bool(*)(ULONG index, ULONG_PTR base_address, PIMAGE_EXPORT_DIRECTORY directory, ULONG_PTR directory_base, ULONG_PTR directory_end, void* context);
 
-enum SystemInformationClass {// For SystemProcessInformation
-    kSystemProcessInformation = 5,
-};
-
-struct SystemProcessInformation {// For NtQuerySystemInformation
-    ULONG next_entry_offset;
-    ULONG number_of_threads;
-    LARGE_INTEGER working_set_private_size;
-    ULONG hard_fault_count;
-    ULONG number_of_threads_high_watermark;
-    ULONG64 cycle_time;
-    LARGE_INTEGER create_time;
-    LARGE_INTEGER user_time;
-    LARGE_INTEGER kernel_time;
-    UNICODE_STRING image_name;
-    // omitted. see ole32!_SYSTEM_PROCESS_INFORMATION
-};
-
 struct SharedShadowHookData;
 
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C NTSTATUS DdimonInitialization(_In_ SharedShadowHookData* shared_sh_data);
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C void DdimonTermination();
+EXTERN_C NTSTATUS DdimonInitialization(_In_ SharedShadowHookData* shared_sh_data);
+EXTERN_C void DdimonTermination();
 
 #endif

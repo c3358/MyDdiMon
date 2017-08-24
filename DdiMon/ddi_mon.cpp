@@ -6,7 +6,19 @@
 
 #include "ddi_mon.h"
 
-static NTSTATUS DdimonpHandleNtQuerySystemInformation(_In_ SystemInformationClass SystemInformationClass, _Inout_ PVOID SystemInformation, _In_ ULONG SystemInformationLength, _Out_opt_ PULONG ReturnLength);
+NTSTATUS HookNtCreateFile(
+    _Out_    PHANDLE            FileHandle,
+    _In_     ACCESS_MASK        DesiredAccess,
+    _In_     POBJECT_ATTRIBUTES ObjectAttributes,
+    _Out_    PIO_STATUS_BLOCK   IoStatusBlock,
+    _In_opt_ PLARGE_INTEGER     AllocationSize,
+    _In_     ULONG              FileAttributes,
+    _In_     ULONG              ShareAccess,
+    _In_     ULONG              CreateDisposition,
+    _In_     ULONG              CreateOptions,
+    _In_     PVOID              EaBuffer,
+    _In_     ULONG              EaLength
+);
 
 // Defines where to install shadow hooks and their handlers
 //
@@ -20,12 +32,12 @@ static NTSTATUS DdimonpHandleNtQuerySystemInformation(_In_ SystemInformationClas
 //  - Function parameters may be an user-address space pointer and not trusted.
 //    Even a kernel-address space pointer should not be trusted for production level security.
 //    Verity and capture all contents from user supplied address to VMM, then use them.
-static ShadowHookTarget g_ddimonp_hook_targets[] = {
-    {RTL_CONSTANT_STRING(L"NTQUERYSYSTEMINFORMATION"),   DdimonpHandleNtQuerySystemInformation,  nullptr},
+ShadowHookTarget g_ddimonp_hook_targets[] = {
+    {RTL_CONSTANT_STRING(L"NTCREATEFILE"),   HookNtCreateFile,  nullptr},//NtCreateFile
 };
 
 
-_Use_decl_annotations_ EXTERN_C static void DdimonpFreeAllocatedTrampolineRegions()
+void DdimonpFreeAllocatedTrampolineRegions()
 // Frees trampoline code allocated and stored in g_ddimonp_hook_targets by DdimonpEnumExportedSymbolsCallback()
 {
     PAGED_CODE();
@@ -41,15 +53,15 @@ _Use_decl_annotations_ EXTERN_C static void DdimonpFreeAllocatedTrampolineRegion
 }
 
 
-_Use_decl_annotations_ EXTERN_C static NTSTATUS DdimonpEnumExportedSymbols(ULONG_PTR base_address, EnumExportedSymbolsCallbackType callback, void* context)
-// Enumerates all exports in a module specified by base_address.
+NTSTATUS DdimonpEnumExportedSymbols(ULONG_PTR base_address, EnumExportedSymbolsCallbackType callback, void* context)// Enumerates all exports in a module specified by base_address.
 {
     PAGED_CODE();
 
     auto dos = reinterpret_cast<PIMAGE_DOS_HEADER>(base_address);
     auto nt = reinterpret_cast<PIMAGE_NT_HEADERS>(base_address + dos->e_lfanew);
     auto dir = reinterpret_cast<PIMAGE_DATA_DIRECTORY>(&nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]);
-    if (!dir->Size || !dir->VirtualAddress) {
+    if (!dir->Size || !dir->VirtualAddress)
+    {
         return STATUS_SUCCESS;
     }
 
@@ -58,7 +70,8 @@ _Use_decl_annotations_ EXTERN_C static NTSTATUS DdimonpEnumExportedSymbols(ULONG
     auto exp_dir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base_address + dir->VirtualAddress);
     for (auto i = 0ul; i < exp_dir->NumberOfNames; i++)
     {
-        if (!callback(i, base_address, exp_dir, dir_base, dir_end, context)) {
+        if (!callback(i, base_address, exp_dir, dir_base, dir_end, context))
+        {
             return STATUS_SUCCESS;
         }
     }
@@ -67,13 +80,7 @@ _Use_decl_annotations_ EXTERN_C static NTSTATUS DdimonpEnumExportedSymbols(ULONG
 }
 
 
-_Use_decl_annotations_ EXTERN_C static bool DdimonpEnumExportedSymbolsCallback(
-    ULONG index,
-    ULONG_PTR base_address,
-    PIMAGE_EXPORT_DIRECTORY directory,
-    ULONG_PTR directory_base,
-    ULONG_PTR directory_end,
-    void* context)
+bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, PIMAGE_EXPORT_DIRECTORY directory, ULONG_PTR directory_base, ULONG_PTR directory_end, void* context)
     // Checks if the export is listed as a hook target, and if so install a hook.
 {
     PAGED_CODE();
@@ -104,28 +111,26 @@ _Use_decl_annotations_ EXTERN_C static bool DdimonpEnumExportedSymbolsCallback(
 
     for (auto& target : g_ddimonp_hook_targets)
     {
-        if (!FsRtlIsNameInExpression(&target.target_name, &name_u, TRUE, nullptr)) {// Is this export listed as a target
+        if (!FsRtlIsNameInExpression(&target.target_name, &name_u, TRUE, nullptr))
+        {// Is this export listed as a target
             continue;
         }
 
-        if (!ShInstallHook(reinterpret_cast<SharedShadowHookData*>(context), reinterpret_cast<void*>(export_address), &target)) {// Yes, install a hook to the export
+        if (!ShInstallHook(reinterpret_cast<SharedShadowHookData*>(context), reinterpret_cast<void*>(export_address), &target))
+        {// Yes, install a hook to the export
             DdimonpFreeAllocatedTrampolineRegions();// This is an error which should not happen
             return false;
         }
-
-        HYPERPLATFORM_LOG_INFO("Hook has been installed at %p %s.", export_address, export_name);
     }
 
     return true;
 }
 
 
-_Use_decl_annotations_ EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// Initializes DdiMon
+EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// Initializes DdiMon
 {
     auto nt_base = UtilPcToFileHeader(KdDebuggerEnabled);// Get a base address of ntoskrnl
-    if (!nt_base) {
-        return STATUS_UNSUCCESSFUL;
-    }
+    ASSERT(nt_base);
 
     // Install hooks by enumerating exports of ntoskrnl, but not activate them yet
     auto status = DdimonpEnumExportedSymbols(reinterpret_cast<ULONG_PTR>(nt_base), DdimonpEnumExportedSymbolsCallback, shared_sh_data);
@@ -143,14 +148,13 @@ _Use_decl_annotations_ EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookDa
 }
 
 
-_Use_decl_annotations_ EXTERN_C void DdimonTermination()// Terminates DdiMon
+EXTERN_C void DdimonTermination()// Terminates DdiMon
 {
     PAGED_CODE();
 
     ShDisableHooks();
     UtilSleep(1000);
     DdimonpFreeAllocatedTrampolineRegions();
-    HYPERPLATFORM_LOG_INFO("DdiMon has been terminated.");
 }
 
 
@@ -170,32 +174,31 @@ template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler t
 }
 
 
-_Use_decl_annotations_ static NTSTATUS DdimonpHandleNtQuerySystemInformation(SystemInformationClass system_information_class, PVOID system_information, ULONG system_information_length, PULONG return_length)
-// The hook handler for NtQuerySystemInformation(). Removes an entry for cmd.exe and hides it from being listed.
+NTSTATUS HookNtCreateFile(
+    _Out_    PHANDLE            FileHandle,
+    _In_     ACCESS_MASK        DesiredAccess,
+    _In_     POBJECT_ATTRIBUTES ObjectAttributes,
+    _Out_    PIO_STATUS_BLOCK   IoStatusBlock,
+    _In_opt_ PLARGE_INTEGER     AllocationSize,
+    _In_     ULONG              FileAttributes,
+    _In_     ULONG              ShareAccess,
+    _In_     ULONG              CreateDisposition,
+    _In_     ULONG              CreateOptions,
+    _In_     PVOID              EaBuffer,
+    _In_     ULONG              EaLength
+)
 {
-    const auto original = DdimonpFindOrignal(DdimonpHandleNtQuerySystemInformation);
-    const auto result = original(system_information_class, system_information, system_information_length, return_length);
-    if (!NT_SUCCESS(result)) {
-        return result;
-    }
-    if (system_information_class != kSystemProcessInformation) {
+    const auto original = DdimonpFindOrignal(HookNtCreateFile);
+    const auto result = original(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+    auto return_addr = _ReturnAddress();
+
+    HYPERPLATFORM_LOG_INFO_SAFE("NtCreateFile1.\r\n");
+
+    if (UtilPcToFileHeader(return_addr)) {// Is inside image?
         return result;
     }
 
-    auto next = reinterpret_cast<SystemProcessInformation*>(system_information);
-    while (next->next_entry_offset)
-    {
-        auto curr = next;
-        next = reinterpret_cast<SystemProcessInformation*>(reinterpret_cast<UCHAR*>(curr) + curr->next_entry_offset);
-        if (_wcsnicmp(next->image_name.Buffer, L"cmd.exe", 7) == 0) {
-            if (next->next_entry_offset) {
-                curr->next_entry_offset += next->next_entry_offset;
-            } else {
-                curr->next_entry_offset = 0;
-            }
-            next = curr;
-        }
-    }
+    HYPERPLATFORM_LOG_INFO_SAFE("NtCreateFile2.\r\n");
 
     return result;
 }

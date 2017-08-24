@@ -7,7 +7,7 @@
 #include "shadow_hook.h"
 
 
-_Use_decl_annotations_ EXTERN_C ShadowHookData* ShAllocateShadowHookData()// Allocates per-processor shadow hook data
+EXTERN_C ShadowHookData* ShAllocateShadowHookData()// Allocates per-processor shadow hook data
 {
     PAGED_CODE();
     auto p = new ShadowHookData();
@@ -16,14 +16,14 @@ _Use_decl_annotations_ EXTERN_C ShadowHookData* ShAllocateShadowHookData()// All
 }
 
 
-_Use_decl_annotations_ EXTERN_C void ShFreeShadowHookData(ShadowHookData* sh_data)// Frees per-processor shadow hook data
+EXTERN_C void ShFreeShadowHookData(ShadowHookData* sh_data)// Frees per-processor shadow hook data
 {
     PAGED_CODE();
     delete sh_data;
 }
 
 
-_Use_decl_annotations_ EXTERN_C SharedShadowHookData* ShAllocateSharedShaowHookData()// Allocates processor-shared shadow hook data
+EXTERN_C SharedShadowHookData* ShAllocateSharedShaowHookData()// Allocates processor-shared shadow hook data
 {
     PAGED_CODE();
     auto p = new SharedShadowHookData();
@@ -32,28 +32,28 @@ _Use_decl_annotations_ EXTERN_C SharedShadowHookData* ShAllocateSharedShaowHookD
 }
 
 
-_Use_decl_annotations_ EXTERN_C void ShFreeSharedShadowHookData(SharedShadowHookData* shared_sh_data)// Frees processor-shared shadow hook data
+EXTERN_C void ShFreeSharedShadowHookData(SharedShadowHookData* shared_sh_data)// Frees processor-shared shadow hook data
 {
     PAGED_CODE();
     delete shared_sh_data;
 }
 
 
-_Use_decl_annotations_ EXTERN_C NTSTATUS ShEnableHooks()// Enables page shadowing for all hooks
+EXTERN_C NTSTATUS ShEnableHooks()// Enables page shadowing for all hooks
 {
     PAGED_CODE();
     return UtilForEachProcessor([](void* context){UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShEnablePageShadowing, nullptr);}, nullptr);
 }
 
 
-_Use_decl_annotations_ EXTERN_C NTSTATUS ShDisableHooks()// Disables page shadowing for all hooks
+EXTERN_C NTSTATUS ShDisableHooks()// Disables page shadowing for all hooks
 {
     PAGED_CODE();
     return UtilForEachProcessor([](void* context) {UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShDisablePageShadowing, nullptr); }, nullptr);
 }
 
 
-_Use_decl_annotations_ static void ShpEnablePageShadowingForExec(const HookInformation& info, EptData* ept_data)// Show a shadowed page for execution
+void ShpEnablePageShadowingForExec(const HookInformation& info, EptData* ept_data)// Show a shadowed page for execution
 {
     const auto ept_pt_entry = EptGetEptPtEntry(ept_data, UtilPaFromVa(info.patch_address));
 
@@ -68,7 +68,7 @@ _Use_decl_annotations_ static void ShpEnablePageShadowingForExec(const HookInfor
 }
 
 
-_Use_decl_annotations_ void ShEnablePageShadowing(EptData* ept_data, const SharedShadowHookData* shared_sh_data)// Enables page shadowing for all hooks
+void ShEnablePageShadowing(EptData* ept_data, const SharedShadowHookData* shared_sh_data)// Enables page shadowing for all hooks
 {
     for (auto& info : shared_sh_data->hooks)
     {
@@ -77,7 +77,7 @@ _Use_decl_annotations_ void ShEnablePageShadowing(EptData* ept_data, const Share
 }
 
 
-_Use_decl_annotations_ static void ShpDisablePageShadowing(const HookInformation& info, EptData* ept_data)// Stop showing a shadow page
+void ShpDisablePageShadowing(const HookInformation& info, EptData* ept_data)// Stop showing a shadow page
 {
     const auto pa_base = UtilPaFromVa(PAGE_ALIGN(info.patch_address));
     const auto ept_pt_entry = EptGetEptPtEntry(ept_data, pa_base);
@@ -89,7 +89,7 @@ _Use_decl_annotations_ static void ShpDisablePageShadowing(const HookInformation
 }
 
 
-_Use_decl_annotations_ void ShVmCallDisablePageShadowing(EptData* ept_data, const SharedShadowHookData* shared_sh_data)// Disables page shadowing for all hooks
+void ShVmCallDisablePageShadowing(EptData* ept_data, const SharedShadowHookData* shared_sh_data)// Disables page shadowing for all hooks
 {
     for (auto& info : shared_sh_data->hooks)
     {
@@ -98,7 +98,7 @@ _Use_decl_annotations_ void ShVmCallDisablePageShadowing(EptData* ept_data, cons
 }
 
 
-_Use_decl_annotations_ static HookInformation* ShpFindPatchInfoByAddress(const SharedShadowHookData* shared_sh_data, void* address)
+HookInformation* ShpFindPatchInfoByAddress(const SharedShadowHookData* shared_sh_data, void* address)
 // Find a HookInformation instance that are on the same page as the address
 {
     auto found = std::find_if(shared_sh_data->hooks.cbegin(), shared_sh_data->hooks.cend(), [address](const auto& info) { return info->patch_address == address; });
@@ -109,13 +109,13 @@ _Use_decl_annotations_ static HookInformation* ShpFindPatchInfoByAddress(const S
 }
 
 
-_Use_decl_annotations_ static bool ShpIsShadowHookActive(const SharedShadowHookData* shared_sh_data)// Checks if DdiMon is already initialized
+bool ShpIsShadowHookActive(const SharedShadowHookData* shared_sh_data)// Checks if DdiMon is already initialized
 {
     return !!(shared_sh_data);
 }
 
 
-_Use_decl_annotations_ bool ShHandleBreakpoint(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, void* guest_ip)
+bool ShHandleBreakpoint(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, void* guest_ip)
 // Handles #BP. Checks if the #BP happened on where DdiMon set a break point, and if so, modifies the contents of guest's IP to execute a corresponding hook handler.
 {
     UNREFERENCED_PARAMETER(sh_data);
@@ -134,7 +134,7 @@ _Use_decl_annotations_ bool ShHandleBreakpoint(ShadowHookData* sh_data, const Sh
 }
 
 
-_Use_decl_annotations_ static void ShpSetMonitorTrapFlag(ShadowHookData* sh_data, bool enable)// Set MTF on the current processor
+void ShpSetMonitorTrapFlag(ShadowHookData* sh_data, bool enable)// Set MTF on the current processor
 {
     VmxProcessorBasedControls vm_procctl = { static_cast<unsigned int>(UtilVmRead(VmcsField::kCpuBasedVmExecControl)) };
     vm_procctl.fields.monitor_trap_flag = enable;
@@ -142,7 +142,7 @@ _Use_decl_annotations_ static void ShpSetMonitorTrapFlag(ShadowHookData* sh_data
 }
 
 
-_Use_decl_annotations_ static const HookInformation* ShpRestoreLastHookInfo(ShadowHookData* sh_data)// Retrieves the last HookInformation
+const HookInformation* ShpRestoreLastHookInfo(ShadowHookData* sh_data)// Retrieves the last HookInformation
 {
     NT_ASSERT(sh_data->last_hook_info);
     auto info = sh_data->last_hook_info;
@@ -151,7 +151,7 @@ _Use_decl_annotations_ static const HookInformation* ShpRestoreLastHookInfo(Shad
 }
 
 
-_Use_decl_annotations_ void ShHandleMonitorTrapFlag(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, EptData* ept_data)// Handles MTF VM-exit. Re-enables the shadow hook and clears MTF.
+void ShHandleMonitorTrapFlag(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, EptData* ept_data)// Handles MTF VM-exit. Re-enables the shadow hook and clears MTF.
 {
     NT_VERIFY(ShpIsShadowHookActive(shared_sh_data));
     const auto info = ShpRestoreLastHookInfo(sh_data);
@@ -160,7 +160,7 @@ _Use_decl_annotations_ void ShHandleMonitorTrapFlag(ShadowHookData* sh_data, con
 }
 
 
-_Use_decl_annotations_ static HookInformation* ShpFindPatchInfoByPage(const SharedShadowHookData* shared_sh_data, void* address)// Find a HookInformation instance by address
+HookInformation* ShpFindPatchInfoByPage(const SharedShadowHookData* shared_sh_data, void* address)// Find a HookInformation instance by address
 {
     const auto found = std::find_if(shared_sh_data->hooks.cbegin(), shared_sh_data->hooks.cend(), [address](const auto& info) {return PAGE_ALIGN(info->patch_address) == PAGE_ALIGN(address); });
     if (found == shared_sh_data->hooks.cend()) {
@@ -170,7 +170,7 @@ _Use_decl_annotations_ static HookInformation* ShpFindPatchInfoByPage(const Shar
 }
 
 
-_Use_decl_annotations_ static void ShpEnablePageShadowingForRW(const HookInformation& info, EptData* ept_data)// Show a shadowed page for read and write
+void ShpEnablePageShadowingForRW(const HookInformation& info, EptData* ept_data)// Show a shadowed page for read and write
 {
     const auto ept_pt_entry = EptGetEptPtEntry(ept_data, UtilPaFromVa(info.patch_address));
 
@@ -184,14 +184,14 @@ _Use_decl_annotations_ static void ShpEnablePageShadowingForRW(const HookInforma
 }
 
 
-_Use_decl_annotations_ static void ShpSaveLastHookInfo(ShadowHookData* sh_data, const HookInformation& info)// Saves HookInformation as the last one for reusing it on up coming MTF VM-exit
+void ShpSaveLastHookInfo(ShadowHookData* sh_data, const HookInformation& info)// Saves HookInformation as the last one for reusing it on up coming MTF VM-exit
 {
     NT_ASSERT(!sh_data->last_hook_info);
     sh_data->last_hook_info = &info;
 }
 
 
-_Use_decl_annotations_ void ShHandleEptViolation(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, EptData* ept_data, void* fault_va)// Handles EPT violation VM-exit.
+void ShHandleEptViolation(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, EptData* ept_data, void* fault_va)// Handles EPT violation VM-exit.
 {
     if (!ShpIsShadowHookActive(shared_sh_data)) {
         return;
@@ -210,7 +210,7 @@ _Use_decl_annotations_ void ShHandleEptViolation(ShadowHookData* sh_data, const 
 }
 
 
-_Use_decl_annotations_ static std::unique_ptr<HookInformation> ShpCreateHookInformation(SharedShadowHookData* shared_sh_data, void* address, ShadowHookTarget* target)
+std::unique_ptr<HookInformation> ShpCreateHookInformation(SharedShadowHookData* shared_sh_data, void* address, ShadowHookTarget* target)
 // Creates or reuses a couple of copied pages and initializes HookInformation
 {
     auto info = std::make_unique<HookInformation>();
@@ -218,8 +218,7 @@ _Use_decl_annotations_ static std::unique_ptr<HookInformation> ShpCreateHookInfo
     if (reusable_info) {// Found an existing HookInformation object targeting the same page as this one. re-use shadow pages.
         info->shadow_page_base_for_rw = reusable_info->shadow_page_base_for_rw;
         info->shadow_page_base_for_exec = reusable_info->shadow_page_base_for_exec;
-    }
-    else {// This hook is for a page that is not currently have any hooks (i.e., not shadowed). Creates shadow pages.
+    } else {// This hook is for a page that is not currently have any hooks (i.e., not shadowed). Creates shadow pages.
         info->shadow_page_base_for_rw = std::make_shared<Page>();
         info->shadow_page_base_for_exec = std::make_shared<Page>();
         auto page_base = PAGE_ALIGN(address);
@@ -234,7 +233,7 @@ _Use_decl_annotations_ static std::unique_ptr<HookInformation> ShpCreateHookInfo
 }
 
 
-_Use_decl_annotations_ EXTERN_C static SIZE_T ShpGetInstructionSize(void* address)// Returns a size of an instruction at the address
+SIZE_T ShpGetInstructionSize(void* address)// Returns a size of an instruction at the address
 {
     PAGED_CODE();
 
@@ -270,7 +269,7 @@ _Use_decl_annotations_ EXTERN_C static SIZE_T ShpGetInstructionSize(void* addres
 }
 
 
-_Use_decl_annotations_ EXTERN_C static TrampolineCode ShpMakeTrampolineCode(void* hook_handler)// Returns code bytes for inline hooking
+TrampolineCode ShpMakeTrampolineCode(void* hook_handler)// Returns code bytes for inline hooking
 {
     PAGED_CODE();
 
@@ -297,7 +296,7 @@ _Use_decl_annotations_ EXTERN_C static TrampolineCode ShpMakeTrampolineCode(void
 }
 
 
-_Use_decl_annotations_ EXTERN_C static bool ShpSetupInlineHook(void* patch_address, UCHAR* shadow_exec_page, void** original_call_ptr)
+bool ShpSetupInlineHook(void* patch_address, UCHAR* shadow_exec_page, void** original_call_ptr)
 // Builds a trampoline code for calling an original code and embeds 0xcc on the shadow_exec_page
 {
     PAGED_CODE();
@@ -339,7 +338,7 @@ _Use_decl_annotations_ EXTERN_C static bool ShpSetupInlineHook(void* patch_addre
 }
 
 
-_Use_decl_annotations_ EXTERN_C bool ShInstallHook(SharedShadowHookData* shared_sh_data, void* address, ShadowHookTarget* target)// Set up inline hook at the address without activating it
+EXTERN_C bool ShInstallHook(SharedShadowHookData* shared_sh_data, void* address, ShadowHookTarget* target)// Set up inline hook at the address without activating it
 {
     PAGED_CODE();
 
@@ -351,9 +350,6 @@ _Use_decl_annotations_ EXTERN_C bool ShInstallHook(SharedShadowHookData* shared_
     if (!ShpSetupInlineHook(info->patch_address, info->shadow_page_base_for_exec->page, &target->original_call)) {
         return false;
     }
-
-    HYPERPLATFORM_LOG_DEBUG("Patch = %p, Exec = %p, RW = %p, Trampoline = %p",
-        info->patch_address, info->shadow_page_base_for_exec->page + BYTE_OFFSET(info->patch_address), info->shadow_page_base_for_rw->page + BYTE_OFFSET(info->patch_address), target->original_call);
 
     shared_sh_data->hooks.push_back(std::move(info));
     return true;
