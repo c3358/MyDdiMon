@@ -27,11 +27,6 @@
 
 #include "shadow_hook.h"
 
-union PoolTag {// A helper type for parsing a PoolTag value
-    ULONG value;
-    UCHAR chars[4];
-};
-
 // A callback type for EnumExportedSymbols()
 using EnumExportedSymbolsCallbackType = bool(*)(ULONG index, ULONG_PTR base_address, PIMAGE_EXPORT_DIRECTORY directory, ULONG_PTR directory_base, ULONG_PTR directory_end, void* context);
 

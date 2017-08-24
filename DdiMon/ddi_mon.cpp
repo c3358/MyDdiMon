@@ -6,10 +6,6 @@
 
 #include "ddi_mon.h"
 
-static VOID DdimonpHandleExQueueWorkItem(_Inout_ PWORK_QUEUE_ITEM work_item, _In_ WORK_QUEUE_TYPE queue_type);
-static PVOID DdimonpHandleExAllocatePoolWithTag(_In_ POOL_TYPE pool_type, _In_ SIZE_T number_of_bytes, _In_ ULONG tag);
-static VOID DdimonpHandleExFreePool(_Pre_notnull_ PVOID p);
-static VOID DdimonpHandleExFreePoolWithTag(_Pre_notnull_ PVOID p, _In_ ULONG tag);
 static NTSTATUS DdimonpHandleNtQuerySystemInformation(_In_ SystemInformationClass SystemInformationClass, _Inout_ PVOID SystemInformation, _In_ ULONG SystemInformationLength, _Out_opt_ PULONG ReturnLength);
 
 // Defines where to install shadow hooks and their handlers
@@ -25,10 +21,6 @@ static NTSTATUS DdimonpHandleNtQuerySystemInformation(_In_ SystemInformationClas
 //    Even a kernel-address space pointer should not be trusted for production level security.
 //    Verity and capture all contents from user supplied address to VMM, then use them.
 static ShadowHookTarget g_ddimonp_hook_targets[] = {
-    {RTL_CONSTANT_STRING(L"EXQUEUEWORKITEM"),            DdimonpHandleExQueueWorkItem,           nullptr},
-    {RTL_CONSTANT_STRING(L"EXALLOCATEPOOLWITHTAG"),      DdimonpHandleExAllocatePoolWithTag,     nullptr},
-    {RTL_CONSTANT_STRING(L"EXFREEPOOL"),                 DdimonpHandleExFreePool,                nullptr},
-    {RTL_CONSTANT_STRING(L"EXFREEPOOLWITHTAG"),          DdimonpHandleExFreePoolWithTag,         nullptr},
     {RTL_CONSTANT_STRING(L"NTQUERYSYSTEMINFORMATION"),   DdimonpHandleNtQuerySystemInformation,  nullptr},
 };
 
@@ -162,27 +154,6 @@ _Use_decl_annotations_ EXTERN_C void DdimonTermination()// Terminates DdiMon
 }
 
 
-_Use_decl_annotations_ static std::array<char, 5> DdimonpTagToString(ULONG tag_value)
-// Converts a pool tag in integer to a printable string
-{
-    PoolTag tag = { tag_value };
-    for (auto& c : tag.chars)
-    {
-        if (!c && isspace(c)) {
-            c = ' ';
-        }
-        if (!isprint(c)) {
-            c = '.';
-        }
-    }
-
-    std::array<char, 5> str;
-    auto status = RtlStringCchPrintfA(str.data(), str.size(), "%c%c%c%c", tag.chars[0], tag.chars[1], tag.chars[2], tag.chars[3]);
-    NT_VERIFY(NT_SUCCESS(status));
-    return str;
-}
-
-
 template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler to call an original function
 {
     for (const auto& target : g_ddimonp_hook_targets)
@@ -196,74 +167,6 @@ template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler t
 
     NT_ASSERT(false);
     return nullptr;
-}
-
-
-_Use_decl_annotations_ static VOID DdimonpHandleExFreePool(PVOID p)
-// The hook handler for ExFreePool(). Logs if ExFreePool() is called from where not backed by any image
-{
-    const auto original = DdimonpFindOrignal(DdimonpHandleExFreePool);
-    original(p);
-    
-    auto return_addr = _ReturnAddress();
-    if (UtilPcToFileHeader(return_addr)) {// Is inside image?
-        return;
-    }
-
-    HYPERPLATFORM_LOG_INFO_SAFE("%p: ExFreePool(P= %p)", return_addr, p);
-}
-
-
-_Use_decl_annotations_ static VOID DdimonpHandleExFreePoolWithTag(PVOID p, ULONG tag)
-// The hook handler for ExFreePoolWithTag(). Logs if ExFreePoolWithTag() is called from where not backed by any image.
-{
-    const auto original = DdimonpFindOrignal(DdimonpHandleExFreePoolWithTag);
-    original(p, tag);
-    
-    /*
-    开启pchunter的内核钩子里的内核钩子(这里常检测出inline hook)，能检测到pte hook.
-    但是pchunter进程会占用一个CPU，且没有反应，这时退出，下面一行概率性的蓝屏，是写操作。
-    */
-    auto return_addr = _ReturnAddress();//这一行偶尔蓝屏。
-    if (UtilPcToFileHeader(return_addr)) {// Is inside image?
-        return;
-    }
-
-    HYPERPLATFORM_LOG_INFO_SAFE("%p: ExFreePoolWithTag(P= %p, Tag= %s)", return_addr, p, DdimonpTagToString(tag).data());
-}
-
-
-_Use_decl_annotations_ static VOID DdimonpHandleExQueueWorkItem(PWORK_QUEUE_ITEM work_item, WORK_QUEUE_TYPE queue_type)
-// The hook handler for ExQueueWorkItem(). Logs if a WorkerRoutine points to where not backed by any image.
-{
-    const auto original = DdimonpFindOrignal(DdimonpHandleExQueueWorkItem);
-
-    if (UtilPcToFileHeader(work_item->WorkerRoutine)) {// Is inside image?
-      // Call an original after checking parameters.
-      // It is common that a work routine frees a work_item object resulting in wrong analysis.
-        original(work_item, queue_type);
-        return;
-    }
-
-    auto return_addr = _ReturnAddress();
-    HYPERPLATFORM_LOG_INFO_SAFE("%p: ExQueueWorkItem({Routine= %p, Parameter= %p}, %d)", return_addr, work_item->WorkerRoutine, work_item->Parameter, queue_type);
-    original(work_item, queue_type);
-}
-
-
-_Use_decl_annotations_ static PVOID DdimonpHandleExAllocatePoolWithTag(POOL_TYPE pool_type, SIZE_T number_of_bytes, ULONG tag)
-// The hook handler for ExAllocatePoolWithTag(). Logs if ExAllocatePoolWithTag() is called from where not backed by any image.
-{
-    const auto original = DdimonpFindOrignal(DdimonpHandleExAllocatePoolWithTag);
-    const auto result = original(pool_type, number_of_bytes, tag);
-    auto return_addr = _ReturnAddress();
-
-    if (UtilPcToFileHeader(return_addr)) {// Is inside image?
-        return result;
-    }
-
-    HYPERPLATFORM_LOG_INFO_SAFE("%p: ExAllocatePoolWithTag(POOL_TYPE= %08x, NumberOfBytes= %08X, Tag= %s) => %p", return_addr, pool_type, number_of_bytes, DdimonpTagToString(tag).data(), result);
-    return result;
 }
 
 
