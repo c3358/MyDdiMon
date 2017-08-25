@@ -191,14 +191,9 @@ NTSTATUS HookNtCreateFile(
     const auto original = DdimonpFindOrignal(HookNtCreateFile);
     const auto result = original(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
     auto return_addr = _ReturnAddress();
+    void * p = UtilPcToFileHeader(return_addr);
 
-    HYPERPLATFORM_LOG_INFO_SAFE("NtCreateFile1.\r\n");
-
-    if (UtilPcToFileHeader(return_addr)) {// Is inside image?
-        return result;
-    }
-
-    HYPERPLATFORM_LOG_INFO_SAFE("NtCreateFile2.\r\n");
+    HYPERPLATFORM_LOG_INFO_SAFE("NtCreateFile is inside image:%p.", p);
 
     return result;
 }

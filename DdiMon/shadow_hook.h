@@ -25,8 +25,6 @@
 
 #include "capstone.h"
 
-struct EptData;
-
 struct Page {// Copy of a page seen by a guest as a result of memory shadowing
     UCHAR* page;  // A page aligned copy of a page
     Page();
