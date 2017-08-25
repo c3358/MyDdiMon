@@ -7,20 +7,17 @@
 #pragma once
 
 #undef _HAS_EXCEPTIONS
-
-#define NTSTRSAFE_NO_CB_FUNCTIONS
 #define _HAS_EXCEPTIONS 0
+#define NTSTRSAFE_NO_CB_FUNCTIONS
 
 #include <fltKernel.h>
 #include <ntimage.h>
 #include <ntstrsafe.h>
 #include <array>
-
 #include "../HyperPlatform/HyperPlatform/common.h"
 #include "../HyperPlatform/HyperPlatform/log.h"
 #include "../HyperPlatform/HyperPlatform/util.h"
 #include "../HyperPlatform/HyperPlatform/ept.h"
-
 #include "shadow_hook.h"
 
 // A callback type for EnumExportedSymbols()

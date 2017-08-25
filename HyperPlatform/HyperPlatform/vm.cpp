@@ -919,19 +919,20 @@ _Use_decl_annotations_ static ULONG VmpAdjustControlValue(
   return adjusted_value;
 }
 
-// Terminates VM
-_Use_decl_annotations_ void VmTermination() {
-  PAGED_CODE();
 
-  HYPERPLATFORM_LOG_INFO("Uninstalling VMM.");
-  DdimonTermination();
-  auto status = UtilForEachProcessor(VmpStopVm, nullptr);
-  if (NT_SUCCESS(status)) {
-    HYPERPLATFORM_LOG_INFO("The VMM has been uninstalled.");
-  } else {
-    HYPERPLATFORM_LOG_WARN("The VMM has not been uninstalled (%08x).", status);
-  }
-  NT_ASSERT(!VmpIsHyperPlatformInstalled());
+_Use_decl_annotations_ void VmTermination()// Terminates VM
+{
+    PAGED_CODE();
+
+    HYPERPLATFORM_LOG_INFO("Uninstalling VMM.");
+    DdimonTermination();
+    auto status = UtilForEachProcessor(VmpStopVm, nullptr);
+    if (NT_SUCCESS(status)) {
+        HYPERPLATFORM_LOG_INFO("The VMM has been uninstalled.");
+    } else {
+        HYPERPLATFORM_LOG_WARN("The VMM has not been uninstalled (%08x).", status);
+    }
+    NT_ASSERT(!VmpIsHyperPlatformInstalled());
 }
 
 // Stops virtualization through a hypercall and frees all related memory
