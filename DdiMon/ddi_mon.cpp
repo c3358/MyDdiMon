@@ -22,13 +22,15 @@ NTSTATUS HookNtCreateFile(
     _In_     PVOID              EaBuffer,
     _In_     ULONG              EaLength
 )
+/*
+此操作中，如果调用HYPERPLATFORM_LOG_INFO_SAFE之类的函数，这些函数是不是又调用NtCreateFile？
+*/
 {
     const auto original = DdimonpFindOrignal(HookNtCreateFile);
     if (!original)
     {
-        KdBreakPoint();
-        HYPERPLATFORM_LOG_INFO_SAFE("NtCreateFile正在调用，但是HOOK机制失效，估计是卸载操作已经发生，或者某些操作失败（我想你是知道的）.");
-        HYPERPLATFORM_LOG_INFO_SAFE("我想是应该调用原函数，具体的机制有待深入分析，应该如此。");
+        KdPrint(("NtCreateFile正在调用，但是HOOK机制失效，估计是卸载操作已经发生，或者某些操作失败（我想你是知道的）.\r\n"));
+        KdPrint(("我想是应该调用原函数，具体的机制还没有深入分析，但是经测试还是可以的，走这里没出现啥问题.\r\n"));
         const auto result = NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
         return result;
     }
@@ -37,7 +39,7 @@ NTSTATUS HookNtCreateFile(
     auto return_addr = _ReturnAddress();
     void * p = UtilPcToFileHeader(return_addr);//这个地址当然是内核的基地址，经测试验证也是的。
 
-    HYPERPLATFORM_LOG_INFO_SAFE("NtCreateFile is inside image:%p.", p);
+    KdPrint(("NtCreateFile is inside image:%p.\r\n", p));
 
     return result;
 }
@@ -65,6 +67,7 @@ NTSTATUS HookNtCreateFile(
 1.函数必须是ntos*.exe中的。
 2.函数必须是导出的。
 3.函数的名字要大写。
+4.Zw系列的函数也不建议使用，上面也说了，还有就是这只会再内核中被调用，剩下的话就是：应用层是不会调用的，除非特殊。
 */
 ShadowHookTarget g_ddimonp_hook_targets[] = {
     { RTL_CONSTANT_STRING(L"NTCREATEFILE"),   HookNtCreateFile,  nullptr },//NtCreateFile
@@ -79,7 +82,14 @@ template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler t
         {
             if (0 == target.original_call)
             {
-                HYPERPLATFORM_LOG_ERROR("卸载（某些失败，你知道的）后会概率性的走这里。");
+                /*
+                试想：
+                1.此函数被调用在NtCreateFile操作中。
+                2.HYPERPLATFORM_LOG_INFO_SAFE之类的函数又是用NtCreateFile的函数实现的。
+                会出现啥情况？如何解决？
+                文件过滤驱动可以指定下一层，或更深的函数。
+                */
+                KdPrint(("卸载（某些失败，你知道的）后会概率性的走这里.\r\n"));
             }
 
             return reinterpret_cast<T>(target.original_call);
@@ -106,14 +116,21 @@ void DdimonpFreeAllocatedTrampolineRegions()
 }
 
 
-bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, PIMAGE_EXPORT_DIRECTORY directory, ULONG_PTR directory_base, ULONG_PTR directory_end, void* context)
+bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, void* context)
 // Checks if the export is listed as a hook target, and if so install a hook.
 {
     PAGED_CODE();
 
-    if (!context) {
-        return false;
-    }
+    ASSERT(context);
+
+    auto dos = reinterpret_cast<PIMAGE_DOS_HEADER>(base_address);
+    auto nt = reinterpret_cast<PIMAGE_NT_HEADERS>(base_address + dos->e_lfanew);
+    auto dir = reinterpret_cast<PIMAGE_DATA_DIRECTORY>(&nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]);
+    ASSERT(dir->Size && dir->VirtualAddress);
+
+    auto directory_base = base_address + dir->VirtualAddress;
+    auto directory_end = base_address + dir->VirtualAddress + dir->Size - 1;
+    auto directory = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base_address + dir->VirtualAddress);
 
     auto functions = reinterpret_cast<ULONG*>(base_address + directory->AddressOfFunctions);
     auto ordinals = reinterpret_cast<USHORT*>(base_address + directory->AddressOfNameOrdinals);
@@ -122,28 +139,25 @@ bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, PIM
     auto export_address = base_address + functions[ord];
     auto export_name = reinterpret_cast<const char*>(base_address + names[index]);
 
-    if (UtilIsInBounds(export_address, directory_base, directory_end)) {// Check if an export is forwarded one? If so, ignore it.
-        return true;
+    if (UtilIsInBounds(export_address, directory_base, directory_end))
+    {
+        return true;// Check if an export is forwarded one? If so, ignore it.
     }
 
-    // convert the name to UNICODE_STRING
     wchar_t name[100];
-    auto status = RtlStringCchPrintfW(name, RTL_NUMBER_OF(name), L"%S", export_name);
-    if (!NT_SUCCESS(status)) {
-        return true;
-    }
+    auto status = RtlStringCchPrintfW(name, RTL_NUMBER_OF(name), L"%S", export_name); ASSERT(NT_SUCCESS(status));
     UNICODE_STRING name_u = {};
     RtlInitUnicodeString(&name_u, name);
 
     for (auto& target : g_ddimonp_hook_targets)
     {
         if (!FsRtlIsNameInExpression(&target.target_name, &name_u, TRUE, nullptr))
-        {// Is this export listed as a target
+        {
             continue;
         }
 
-        if (!ShInstallHook(reinterpret_cast<SharedShadowHookData*>(context), reinterpret_cast<void*>(export_address), &target))
-        {// Yes, install a hook to the export
+        if (!ShInstallHook(reinterpret_cast<SharedShadowHookData*>(context), reinterpret_cast<void*>(export_address), &target))// Yes, install a hook to the export
+        {
             DdimonpFreeAllocatedTrampolineRegions();// This is an error which should not happen
             return false;
         }
@@ -153,7 +167,7 @@ bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, PIM
 }
 
 
-NTSTATUS DdimonpEnumExportedSymbols(void* context)
+void DdimonpEnumExportedSymbols(void* context)
 {
     PAGED_CODE();
 
@@ -163,23 +177,16 @@ NTSTATUS DdimonpEnumExportedSymbols(void* context)
     auto dos = reinterpret_cast<PIMAGE_DOS_HEADER>(base_address);
     auto nt = reinterpret_cast<PIMAGE_NT_HEADERS>(base_address + dos->e_lfanew);
     auto dir = reinterpret_cast<PIMAGE_DATA_DIRECTORY>(&nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]);
-    if (!dir->Size || !dir->VirtualAddress)
-    {
-        return STATUS_SUCCESS;
-    }
+    ASSERT (dir->Size && dir->VirtualAddress);
 
-    auto dir_base = base_address + dir->VirtualAddress;
-    auto dir_end = base_address + dir->VirtualAddress + dir->Size - 1;
     auto exp_dir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base_address + dir->VirtualAddress);
     for (auto i = 0ul; i < exp_dir->NumberOfNames; i++)
     {
-        if (!DdimonpEnumExportedSymbolsCallback(i, base_address, exp_dir, dir_base, dir_end, context))
+        if (!DdimonpEnumExportedSymbolsCallback(i, base_address, context))
         {
-            return STATUS_SUCCESS;
+            return;
         }
     }
-
-    return STATUS_SUCCESS;
 }
 
 
@@ -190,13 +197,9 @@ NTSTATUS DdimonpEnumExportedSymbols(void* context)
 
 EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// Initializes DdiMon
 {
-    // Install hooks by enumerating exports of ntoskrnl, but not activate them yet
-    auto status = DdimonpEnumExportedSymbols(shared_sh_data);
-    if (!NT_SUCCESS(status)) {
-        return status;
-    }
+    DdimonpEnumExportedSymbols(shared_sh_data);// Install hooks by enumerating exports of ntoskrnl, but not activate them yet
 
-    status = ShEnableHooks();// Activate installed hooks
+    auto status = ShEnableHooks();// Activate installed hooks
     if (!NT_SUCCESS(status)) {
         DdimonpFreeAllocatedTrampolineRegions();
         return status;
