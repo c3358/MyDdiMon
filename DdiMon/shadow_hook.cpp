@@ -342,7 +342,7 @@ bool ShInstallHook(SharedShadowHookData* shared_sh_data, void* address, ShadowHo
 {
     PAGED_CODE();
 
-    auto info = ShpCreateHookInformation(shared_sh_data, reinterpret_cast<void*>(address), target);
+    auto info = ShpCreateHookInformation(shared_sh_data, address, target);
     if (!info) {
         return false;
     }
@@ -356,15 +356,13 @@ bool ShInstallHook(SharedShadowHookData* shared_sh_data, void* address, ShadowHo
 }
 
 
-Page::Page() : page(reinterpret_cast<UCHAR*>(ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, kHyperPlatformCommonPoolTag)))// Allocates a non-paged, page-aligned page. Issues bug check on failure
+Page::Page() : page(reinterpret_cast<UCHAR*>(ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, kHyperPlatformCommonPoolTag)))
 {
-    if (!page) {
-        HYPERPLATFORM_COMMON_BUG_CHECK(HyperPlatformBugCheck::kCritialPoolAllocationFailure, 0, 0, 0);
-    }
+    ASSERT(page);
 }
 
 
-Page::~Page()// De-allocates the allocated page
+Page::~Page()
 {
     ExFreePoolWithTag(page, kHyperPlatformCommonPoolTag);
 }

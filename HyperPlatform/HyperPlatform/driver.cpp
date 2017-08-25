@@ -167,8 +167,6 @@ _Use_decl_annotations_ static void DriverpDriverUnload(
   UNREFERENCED_PARAMETER(driver_object);
   PAGED_CODE();
 
-  HYPERPLATFORM_COMMON_DBG_BREAK();
-
   VmTermination();
   HotplugCallbackTermination();
   PowerCallbackTermination();

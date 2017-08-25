@@ -68,6 +68,7 @@ NTSTATUS HookNtCreateFile(
 2.函数必须是导出的。
 3.函数的名字要大写。
 4.Zw系列的函数也不建议使用，上面也说了，还有就是这只会再内核中被调用，剩下的话就是：应用层是不会调用的，除非特殊。
+5.有时间改进下，改进为无论函数导出与否，都支持，只要有地址，因为有好些没有导出的函数。
 */
 ShadowHookTarget g_ddimonp_hook_targets[] = {
     { RTL_CONSTANT_STRING(L"NTCREATEFILE"),   HookNtCreateFile,  nullptr },//NtCreateFile
@@ -88,8 +89,10 @@ template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler t
                 2.HYPERPLATFORM_LOG_INFO_SAFE之类的函数又是用NtCreateFile的函数实现的。
                 会出现啥情况？如何解决？
                 文件过滤驱动可以指定下一层，或更深的函数。
+
+                在开启本驱动的验证器的条件下，且开启了debugview，KdPrint会导致栈的递归调用，从而导致了蓝屏。
                 */
-                KdPrint(("卸载/（或某些失败，你知道的）后会概率性的走这里.\r\n"));
+                //KdPrint(("卸载/（或某些失败，你知道的）后会概率性的走这里.\r\n"));
             }
 
             return reinterpret_cast<T>(target.original_call);
@@ -116,7 +119,7 @@ void DdimonpFreeAllocatedTrampolineRegions()
 }
 
 
-bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, void* context)
+bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, SharedShadowHookData* context)
 // Checks if the export is listed as a hook target, and if so install a hook.
 {
     PAGED_CODE();
@@ -133,7 +136,7 @@ bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, voi
     auto ordinals = reinterpret_cast<USHORT*>(base_address + directory->AddressOfNameOrdinals);
     auto names = reinterpret_cast<ULONG*>(base_address + directory->AddressOfNames);
     auto ord = ordinals[index];
-    auto export_address = base_address + functions[ord];
+    void * export_address = reinterpret_cast<void*>(base_address + functions[ord]);
     auto export_name = reinterpret_cast<const char*>(base_address + names[index]);
 
     wchar_t name[100];
@@ -148,7 +151,7 @@ bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, voi
             continue;
         }
 
-        if (!ShInstallHook(reinterpret_cast<SharedShadowHookData*>(context), reinterpret_cast<void*>(export_address), &target))// Yes, install a hook to the export
+        if (!ShInstallHook(context, export_address, &target))// Yes, install a hook to the export
         {
             DdimonpFreeAllocatedTrampolineRegions();// This is an error which should not happen
             return false;
@@ -159,7 +162,7 @@ bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, voi
 }
 
 
-void DdimonpEnumExportedSymbols(void* context)
+void DdimonpEnumExportedSymbols(SharedShadowHookData* context)
 {
     PAGED_CODE();
 
@@ -187,9 +190,9 @@ void DdimonpEnumExportedSymbols(void* context)
 //一下是导出的函数。
 
 
-NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)
+NTSTATUS DdimonInitialization(SharedShadowHookData* context)
 {
-    DdimonpEnumExportedSymbols(shared_sh_data);// Install hooks by enumerating exports of ntoskrnl, but not activate them yet
+    DdimonpEnumExportedSymbols(context);// Install hooks by enumerating exports of ntoskrnl, but not activate them yet
 
     auto status = ShEnableHooks();// Activate installed hooks
     if (!NT_SUCCESS(status)) {
