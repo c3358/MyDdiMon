@@ -26,7 +26,7 @@ NTSTATUS HookNtCreateFile(
     const auto original = DdimonpFindOrignal(HookNtCreateFile);
     const auto result = original(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
     auto return_addr = _ReturnAddress();
-    void * p = UtilPcToFileHeader(return_addr);
+    void * p = UtilPcToFileHeader(return_addr);//这个地址当然是内核的基地址，经测试验证也是的。
 
     HYPERPLATFORM_LOG_INFO_SAFE("NtCreateFile is inside image:%p.", p);
 
