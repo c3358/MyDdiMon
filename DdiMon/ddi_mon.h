@@ -1,9 +1,6 @@
 // Copyright (c) 2015-2016, tandasat. All rights reserved.
 // Use of this source code is governed by a MIT-style license that can be found in the LICENSE file.
 
-/// @file
-/// @brief Declares interfaces to DdiMon functions.
-
 #pragma once
 
 #undef _HAS_EXCEPTIONS
@@ -20,5 +17,5 @@
 #include "../HyperPlatform/HyperPlatform/ept.h"
 #include "shadow_hook.h"
 
-EXTERN_C NTSTATUS DdimonInitialization(_In_ SharedShadowHookData* shared_sh_data);
-EXTERN_C void DdimonTermination();
+NTSTATUS DdimonInitialization(_In_ SharedShadowHookData* shared_sh_data);
+void DdimonTermination();

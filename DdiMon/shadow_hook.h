@@ -1,13 +1,9 @@
 // Copyright (c) 2015-2016, tandasat. All rights reserved.
 // Use of this source code is governed by a MIT-style license that can be found in the LICENSE file.
 
-/// @file
-/// @brief Declares interfaces to shadow hook functions.
-
 #pragma once
 
 #undef _HAS_EXCEPTIONS
-
 #define _HAS_EXCEPTIONS 0
 #define NTSTRSAFE_NO_CB_FUNCTIONS
 
@@ -17,12 +13,10 @@
 #include <vector>
 #include <memory>
 #include <algorithm>
-
 #include "../HyperPlatform/HyperPlatform/common.h"
 #include "../HyperPlatform/HyperPlatform/log.h"
 #include "../HyperPlatform/HyperPlatform/util.h"
 #include "../HyperPlatform/HyperPlatform/ept.h"
-
 #include "capstone.h"
 
 struct Page {// Copy of a page seen by a guest as a result of memory shadowing
@@ -50,7 +44,7 @@ struct SharedShadowHookData {// Data structure shared across all processors
 };
 
 struct ShadowHookData {// Data structure for each processor
-    const HookInformation* last_hook_info;  // Remember which hook hit the last
+    HookInformation* last_hook_info;  // Remember which hook hit the last
 };
 
 // A structure reflects inline hook code.
@@ -79,15 +73,15 @@ struct ShadowHookTarget {      // Expresses where to install hooks by a function
   void* original_call;         // An address of a trampoline code to call original function. Initialized by a successful call of ShInstallHook().
 };
 
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C ShadowHookData* ShAllocateShadowHookData();
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C void ShFreeShadowHookData(_In_ ShadowHookData* sh_data);
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C SharedShadowHookData* ShAllocateSharedShaowHookData();
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C void ShFreeSharedShadowHookData(_In_ SharedShadowHookData* shared_sh_data);
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C NTSTATUS ShEnableHooks();
-_IRQL_requires_max_(PASSIVE_LEVEL) EXTERN_C NTSTATUS ShDisableHooks();
-_IRQL_requires_min_(DISPATCH_LEVEL) void ShEnablePageShadowing(_In_ EptData* ept_data, _In_ const SharedShadowHookData* shared_sh_data);
-_IRQL_requires_min_(DISPATCH_LEVEL) void ShVmCallDisablePageShadowing(_In_ EptData* ept_data, _In_ const SharedShadowHookData* shared_sh_data);
-EXTERN_C bool ShInstallHook(_In_ SharedShadowHookData* shared_sh_data, _In_ void* address, _In_ ShadowHookTarget* target);
-_IRQL_requires_min_(DISPATCH_LEVEL) bool ShHandleBreakpoint(_In_ ShadowHookData* sh_data, _In_ const SharedShadowHookData* shared_sh_data, _In_ void* guest_ip);
+ShadowHookData* ShAllocateShadowHookData();
+void ShFreeShadowHookData(_In_ ShadowHookData* sh_data);
+SharedShadowHookData* ShAllocateSharedShaowHookData();
+void ShFreeSharedShadowHookData(_In_ SharedShadowHookData* shared_sh_data);
+NTSTATUS ShEnableHooks();
+NTSTATUS ShDisableHooks();
+void ShEnablePageShadowing(_In_ EptData* ept_data, _In_ const SharedShadowHookData* shared_sh_data);
+void ShVmCallDisablePageShadowing(_In_ EptData* ept_data, _In_ const SharedShadowHookData* shared_sh_data);
+bool ShInstallHook(_In_ SharedShadowHookData* shared_sh_data, _In_ void* address, _In_ ShadowHookTarget* target);
+bool ShHandleBreakpoint(_In_ ShadowHookData* sh_data, _In_ const SharedShadowHookData* shared_sh_data, _In_ void* guest_ip);
 void ShHandleMonitorTrapFlag(_In_ ShadowHookData* sh_data, _In_ const SharedShadowHookData* shared_sh_data, _In_ EptData* ept_data);
 void ShHandleEptViolation(_In_ ShadowHookData* sh_data, _In_ const SharedShadowHookData* shared_sh_data, _In_ EptData* ept_data, _In_ void* fault_va);

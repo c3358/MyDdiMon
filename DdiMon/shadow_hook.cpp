@@ -7,7 +7,7 @@
 #include "shadow_hook.h"
 
 
-EXTERN_C ShadowHookData* ShAllocateShadowHookData()// Allocates per-processor shadow hook data
+ShadowHookData* ShAllocateShadowHookData()// Allocates per-processor shadow hook data
 {
     PAGED_CODE();
     auto p = new ShadowHookData();
@@ -16,14 +16,14 @@ EXTERN_C ShadowHookData* ShAllocateShadowHookData()// Allocates per-processor sh
 }
 
 
-EXTERN_C void ShFreeShadowHookData(ShadowHookData* sh_data)// Frees per-processor shadow hook data
+void ShFreeShadowHookData(ShadowHookData* sh_data)// Frees per-processor shadow hook data
 {
     PAGED_CODE();
     delete sh_data;
 }
 
 
-EXTERN_C SharedShadowHookData* ShAllocateSharedShaowHookData()// Allocates processor-shared shadow hook data
+SharedShadowHookData* ShAllocateSharedShaowHookData()// Allocates processor-shared shadow hook data
 {
     PAGED_CODE();
     auto p = new SharedShadowHookData();
@@ -32,21 +32,21 @@ EXTERN_C SharedShadowHookData* ShAllocateSharedShaowHookData()// Allocates proce
 }
 
 
-EXTERN_C void ShFreeSharedShadowHookData(SharedShadowHookData* shared_sh_data)// Frees processor-shared shadow hook data
+void ShFreeSharedShadowHookData(SharedShadowHookData* shared_sh_data)// Frees processor-shared shadow hook data
 {
     PAGED_CODE();
     delete shared_sh_data;
 }
 
 
-EXTERN_C NTSTATUS ShEnableHooks()// Enables page shadowing for all hooks
+NTSTATUS ShEnableHooks()// Enables page shadowing for all hooks
 {
     PAGED_CODE();
     return UtilForEachProcessor([](void* context){UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShEnablePageShadowing, nullptr);}, nullptr);
 }
 
 
-EXTERN_C NTSTATUS ShDisableHooks()// Disables page shadowing for all hooks
+NTSTATUS ShDisableHooks()// Disables page shadowing for all hooks
 {
     PAGED_CODE();
     return UtilForEachProcessor([](void* context) {UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShDisablePageShadowing, nullptr); }, nullptr);
@@ -142,7 +142,7 @@ void ShpSetMonitorTrapFlag(ShadowHookData* sh_data, bool enable)// Set MTF on th
 }
 
 
-const HookInformation* ShpRestoreLastHookInfo(ShadowHookData* sh_data)// Retrieves the last HookInformation
+HookInformation* ShpRestoreLastHookInfo(ShadowHookData* sh_data)// Retrieves the last HookInformation
 {
     NT_ASSERT(sh_data->last_hook_info);
     auto info = sh_data->last_hook_info;
@@ -154,7 +154,7 @@ const HookInformation* ShpRestoreLastHookInfo(ShadowHookData* sh_data)// Retriev
 void ShHandleMonitorTrapFlag(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, EptData* ept_data)// Handles MTF VM-exit. Re-enables the shadow hook and clears MTF.
 {
     NT_VERIFY(ShpIsShadowHookActive(shared_sh_data));
-    const auto info = ShpRestoreLastHookInfo(sh_data);
+    auto info = ShpRestoreLastHookInfo(sh_data);
     ShpEnablePageShadowingForExec(*info, ept_data);
     ShpSetMonitorTrapFlag(sh_data, false);
 }
@@ -184,7 +184,7 @@ void ShpEnablePageShadowingForRW(const HookInformation& info, EptData* ept_data)
 }
 
 
-void ShpSaveLastHookInfo(ShadowHookData* sh_data, const HookInformation& info)// Saves HookInformation as the last one for reusing it on up coming MTF VM-exit
+void ShpSaveLastHookInfo(ShadowHookData* sh_data, HookInformation& info)// Saves HookInformation as the last one for reusing it on up coming MTF VM-exit
 {
     NT_ASSERT(!sh_data->last_hook_info);
     sh_data->last_hook_info = &info;
@@ -338,7 +338,7 @@ bool ShpSetupInlineHook(void* patch_address, UCHAR* shadow_exec_page, void** ori
 }
 
 
-EXTERN_C bool ShInstallHook(SharedShadowHookData* shared_sh_data, void* address, ShadowHookTarget* target)// Set up inline hook at the address without activating it
+bool ShInstallHook(SharedShadowHookData* shared_sh_data, void* address, ShadowHookTarget* target)// Set up inline hook at the address without activating it
 {
     PAGED_CODE();
 

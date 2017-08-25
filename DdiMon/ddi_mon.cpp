@@ -128,21 +128,13 @@ bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, voi
     auto dir = reinterpret_cast<PIMAGE_DATA_DIRECTORY>(&nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT]);
     ASSERT(dir->Size && dir->VirtualAddress);
 
-    auto directory_base = base_address + dir->VirtualAddress;
-    auto directory_end = base_address + dir->VirtualAddress + dir->Size - 1;
     auto directory = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base_address + dir->VirtualAddress);
-
     auto functions = reinterpret_cast<ULONG*>(base_address + directory->AddressOfFunctions);
     auto ordinals = reinterpret_cast<USHORT*>(base_address + directory->AddressOfNameOrdinals);
     auto names = reinterpret_cast<ULONG*>(base_address + directory->AddressOfNames);
     auto ord = ordinals[index];
     auto export_address = base_address + functions[ord];
     auto export_name = reinterpret_cast<const char*>(base_address + names[index]);
-
-    if (UtilIsInBounds(export_address, directory_base, directory_end))
-    {
-        return true;// Check if an export is forwarded one? If so, ignore it.
-    }
 
     wchar_t name[100];
     auto status = RtlStringCchPrintfW(name, RTL_NUMBER_OF(name), L"%S", export_name); ASSERT(NT_SUCCESS(status));
@@ -195,7 +187,7 @@ void DdimonpEnumExportedSymbols(void* context)
 //一下是导出的函数。
 
 
-EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// Initializes DdiMon
+NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)
 {
     DdimonpEnumExportedSymbols(shared_sh_data);// Install hooks by enumerating exports of ntoskrnl, but not activate them yet
 
@@ -209,7 +201,7 @@ EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// I
 }
 
 
-EXTERN_C void DdimonTermination()// Terminates DdiMon
+void DdimonTermination()
 {
     PAGED_CODE();
 
