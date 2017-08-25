@@ -20,8 +20,5 @@
 #include "../HyperPlatform/HyperPlatform/ept.h"
 #include "shadow_hook.h"
 
-// A callback type for EnumExportedSymbols()
-using EnumExportedSymbolsCallbackType = bool(*)(ULONG index, ULONG_PTR base_address, PIMAGE_EXPORT_DIRECTORY directory, ULONG_PTR directory_base, ULONG_PTR directory_end, void* context);
-
 EXTERN_C NTSTATUS DdimonInitialization(_In_ SharedShadowHookData* shared_sh_data);
 EXTERN_C void DdimonTermination();

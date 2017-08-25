@@ -140,7 +140,7 @@ bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, PIM
 }
 
 
-NTSTATUS DdimonpEnumExportedSymbols(ULONG_PTR base_address, EnumExportedSymbolsCallbackType callback, void* context)// Enumerates all exports in a module specified by base_address.
+NTSTATUS DdimonpEnumExportedSymbols(ULONG_PTR base_address, void* context)// Enumerates all exports in a module specified by base_address.
 {
     PAGED_CODE();
 
@@ -157,7 +157,7 @@ NTSTATUS DdimonpEnumExportedSymbols(ULONG_PTR base_address, EnumExportedSymbolsC
     auto exp_dir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base_address + dir->VirtualAddress);
     for (auto i = 0ul; i < exp_dir->NumberOfNames; i++)
     {
-        if (!callback(i, base_address, exp_dir, dir_base, dir_end, context))
+        if (!DdimonpEnumExportedSymbolsCallback(i, base_address, exp_dir, dir_base, dir_end, context))
         {
             return STATUS_SUCCESS;
         }
@@ -178,7 +178,7 @@ EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// I
     ASSERT(nt_base);
 
     // Install hooks by enumerating exports of ntoskrnl, but not activate them yet
-    auto status = DdimonpEnumExportedSymbols(reinterpret_cast<ULONG_PTR>(nt_base), DdimonpEnumExportedSymbolsCallback, shared_sh_data);
+    auto status = DdimonpEnumExportedSymbols(reinterpret_cast<ULONG_PTR>(nt_base), shared_sh_data);
     if (!NT_SUCCESS(status)) {
         return status;
     }
