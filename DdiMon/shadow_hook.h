@@ -4,30 +4,28 @@
 /// @file
 /// @brief Declares interfaces to shadow hook functions.
 
-#ifndef DDIMON_SHADOW_HOOK_H_
-#define DDIMON_SHADOW_HOOK_H_
+#pragma once
+
+#undef _HAS_EXCEPTIONS
+
+#define _HAS_EXCEPTIONS 0
+#define NTSTRSAFE_NO_CB_FUNCTIONS
 
 #include <fltKernel.h>
 #include <ntimage.h>
-
-#define NTSTRSAFE_NO_CB_FUNCTIONS
-
 #include <ntstrsafe.h>
+#include <vector>
+#include <memory>
+#include <algorithm>
 
 #include "../HyperPlatform/HyperPlatform/common.h"
 #include "../HyperPlatform/HyperPlatform/log.h"
 #include "../HyperPlatform/HyperPlatform/util.h"
 #include "../HyperPlatform/HyperPlatform/ept.h"
 
-#undef _HAS_EXCEPTIONS
-
-#define _HAS_EXCEPTIONS 0
-
-#include <vector>
-#include <memory>
-#include <algorithm>
-
 #include "capstone.h"
+
+struct EptData;
 
 struct Page {// Copy of a page seen by a guest as a result of memory shadowing
     UCHAR* page;  // A page aligned copy of a page
@@ -77,8 +75,6 @@ static_assert(sizeof(TrampolineCode) == 7, "Size check");
 #endif
 #include <poppack.h>
 
-struct EptData;
-
 struct ShadowHookTarget {      // Expresses where to install hooks by a function name, and its handlers
   UNICODE_STRING target_name;  // An export name to hook
   void* handler;               // An address of a hook handler
@@ -97,5 +93,3 @@ EXTERN_C bool ShInstallHook(_In_ SharedShadowHookData* shared_sh_data, _In_ void
 _IRQL_requires_min_(DISPATCH_LEVEL) bool ShHandleBreakpoint(_In_ ShadowHookData* sh_data, _In_ const SharedShadowHookData* shared_sh_data, _In_ void* guest_ip);
 void ShHandleMonitorTrapFlag(_In_ ShadowHookData* sh_data, _In_ const SharedShadowHookData* shared_sh_data, _In_ EptData* ept_data);
 void ShHandleEptViolation(_In_ ShadowHookData* sh_data, _In_ const SharedShadowHookData* shared_sh_data, _In_ EptData* ept_data, _In_ void* fault_va);
-
-#endif
