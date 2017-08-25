@@ -784,11 +784,11 @@ _Use_decl_annotations_ void UtilWriteMsr64(Msr msr, ULONG64 value) {
   __writemsr(static_cast<unsigned long>(msr), value);
 }
 
-// Executes the INVEPT instruction and invalidates EPT entry cache
-/*_Use_decl_annotations_*/ VmxStatus UtilInveptGlobal() {
+
+VmxStatus UtilInveptGlobal()// Executes the INVEPT instruction and invalidates EPT entry cache
+{
   InvEptDescriptor desc = {};
-  return static_cast<VmxStatus>(
-      AsmInvept(InvEptType::kGlobalInvalidation, &desc));
+  return static_cast<VmxStatus>(AsmInvept(InvEptType::kGlobalInvalidation, &desc));
 }
 
 // Executes the INVVPID instruction (type 0)

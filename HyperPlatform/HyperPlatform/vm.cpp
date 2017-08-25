@@ -987,27 +987,24 @@ _Use_decl_annotations_ static void VmpFreeProcessorData(
 }
 
 // Decrement reference count of shared data and free it if no reference
-_Use_decl_annotations_ static void VmpFreeSharedData(
-    ProcessorData *processor_data) {
+_Use_decl_annotations_ static void VmpFreeSharedData(ProcessorData *processor_data)
+{
   PAGED_CODE();
 
   if (!processor_data->shared_data) {
     return;
   }
 
-  if (InterlockedDecrement(&processor_data->shared_data->reference_count) !=
-      0) {
+  if (InterlockedDecrement(&processor_data->shared_data->reference_count) != 0) {
     return;
   }
 
   HYPERPLATFORM_LOG_DEBUG("Freeing shared data...");
   if (processor_data->shared_data->io_bitmap_a) {
-    ExFreePoolWithTag(processor_data->shared_data->io_bitmap_a,
-                      kHyperPlatformCommonPoolTag);
+    ExFreePoolWithTag(processor_data->shared_data->io_bitmap_a, kHyperPlatformCommonPoolTag);
   }
   if (processor_data->shared_data->msr_bitmap) {
-    ExFreePoolWithTag(processor_data->shared_data->msr_bitmap,
-                      kHyperPlatformCommonPoolTag);
+    ExFreePoolWithTag(processor_data->shared_data->msr_bitmap, kHyperPlatformCommonPoolTag);
   }
   if (processor_data->shared_data->shared_sh_data) {
     ShFreeSharedShadowHookData(processor_data->shared_data->shared_sh_data);

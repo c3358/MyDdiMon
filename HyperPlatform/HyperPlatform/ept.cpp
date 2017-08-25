@@ -405,55 +405,44 @@ _Use_decl_annotations_ static ULONG64 EptpAddressToPteIndex(
   return index;
 }
 
+
+_Use_decl_annotations_ void EptHandleEptViolation(EptData *ept_data, ShadowHookData *sh_data, SharedShadowHookData *shared_sh_data)
 // Deal with EPT violation VM-exit.
-_Use_decl_annotations_ void EptHandleEptViolation(
-    EptData *ept_data, ShadowHookData *sh_data,
-    SharedShadowHookData *shared_sh_data) {
-  const EptViolationQualification exit_qualification = {
-      UtilVmRead(VmcsField::kExitQualification)};
+{
+    const EptViolationQualification exit_qualification = { UtilVmRead(VmcsField::kExitQualification) };
+    const auto fault_pa = UtilVmRead64(VmcsField::kGuestPhysicalAddress);
+    const auto fault_va = reinterpret_cast<void *>(exit_qualification.fields.valid_guest_linear_address ? UtilVmRead(VmcsField::kGuestLinearAddress) : 0);
 
-  const auto fault_pa = UtilVmRead64(VmcsField::kGuestPhysicalAddress);
-  const auto fault_va = reinterpret_cast<void *>(
-      exit_qualification.fields.valid_guest_linear_address
-          ? UtilVmRead(VmcsField::kGuestLinearAddress)
-          : 0);
+    if (!exit_qualification.fields.ept_readable && !exit_qualification.fields.ept_writeable && !exit_qualification.fields.ept_executable) {
+        const auto ept_entry = EptGetEptPtEntry(ept_data, fault_pa);
+        if (!ept_entry || !ept_entry->all) {
+            // EPT entry miss. It should be device memory.
+            HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
 
-  if (!exit_qualification.fields.ept_readable &&
-      !exit_qualification.fields.ept_writeable &&
-      !exit_qualification.fields.ept_executable) {
-    const auto ept_entry = EptGetEptPtEntry(ept_data, fault_pa);
-    if (!ept_entry || !ept_entry->all) {
-      // EPT entry miss. It should be device memory.
-      HYPERPLATFORM_PERFORMANCE_MEASURE_THIS_SCOPE();
+            if (!IsReleaseBuild()) {
+                NT_VERIFY(EptpIsDeviceMemory(fault_pa));
+            }
+            EptpConstructTables(ept_data->ept_pml4, 4, fault_pa, ept_data);
 
-      if (!IsReleaseBuild()) {
-        NT_VERIFY(EptpIsDeviceMemory(fault_pa));
-      }
-      EptpConstructTables(ept_data->ept_pml4, 4, fault_pa, ept_data);
-
-      UtilInveptGlobal();
-      return;
-    }
-  } else if (exit_qualification.fields.caused_by_translation) {
-    // Tell EPT violation when it is caused due to read or write violation.
-    const auto read_failure = exit_qualification.fields.read_access &&
-                              !exit_qualification.fields.ept_readable;
-    const auto write_failure = exit_qualification.fields.write_access &&
-                               !exit_qualification.fields.ept_writeable;
-    if (read_failure || write_failure) {
-      ShHandleEptViolation(sh_data, shared_sh_data, ept_data, fault_va);
+            UtilInveptGlobal();
+            return;
+        }
+    } else if (exit_qualification.fields.caused_by_translation) {
+        // Tell EPT violation when it is caused due to read or write violation.
+        const auto read_failure = exit_qualification.fields.read_access && !exit_qualification.fields.ept_readable;
+        const auto write_failure = exit_qualification.fields.write_access && !exit_qualification.fields.ept_writeable;
+        if (read_failure || write_failure) {
+            ShHandleEptViolation(sh_data, shared_sh_data, ept_data, fault_va);
+        } else {
+            HYPERPLATFORM_LOG_DEBUG_SAFE("[IGNR] OTH VA = %p, PA = %016llx", fault_va, fault_pa);
+        }
     } else {
-      HYPERPLATFORM_LOG_DEBUG_SAFE("[IGNR] OTH VA = %p, PA = %016llx", fault_va,
-                                   fault_pa);
+        HYPERPLATFORM_LOG_DEBUG_SAFE("[IGNR] OTH VA = %p, PA = %016llx", fault_va, fault_pa);
     }
-  } else {
-    HYPERPLATFORM_LOG_DEBUG_SAFE("[IGNR] OTH VA = %p, PA = %016llx", fault_va,
-                                 fault_pa);
-  }
 }
 
-// Returns if the physical_address is device memory (which could not have a
-// corresponding PFN entry)
+
+// Returns if the physical_address is device memory (which could not have a corresponding PFN entry)
 _Use_decl_annotations_ static bool EptpIsDeviceMemory(
     ULONG64 physical_address) {
   const auto pm_ranges = UtilGetPhysicalMemoryRanges();
@@ -470,8 +459,8 @@ _Use_decl_annotations_ static bool EptpIsDeviceMemory(
 }
 
 // Returns an EPT entry corresponds to the physical_address
-_Use_decl_annotations_ EptCommonEntry *EptGetEptPtEntry(
-    EptData *ept_data, ULONG64 physical_address) {
+_Use_decl_annotations_ EptCommonEntry *EptGetEptPtEntry(EptData *ept_data, ULONG64 physical_address)
+{
   return EptpGetEptPtEntry(ept_data->ept_pml4, 4, physical_address);
 }
 
