@@ -174,7 +174,7 @@ NTSTATUS DdimonpEnumExportedSymbols(ULONG_PTR base_address, void* context)// Enu
 
 EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// Initializes DdiMon
 {
-    auto nt_base = UtilPcToFileHeader(KdDebuggerEnabled);// Get a base address of ntoskrnl
+    auto nt_base = UtilPcToFileHeader(KdDebuggerEnabled);//获取内核基地址是如此之简单，看来RtlPcToFileHeader还有别的用途，不信请细看。
     ASSERT(nt_base);
 
     // Install hooks by enumerating exports of ntoskrnl, but not activate them yet
