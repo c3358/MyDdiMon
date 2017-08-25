@@ -24,6 +24,15 @@ NTSTATUS HookNtCreateFile(
 )
 {
     const auto original = DdimonpFindOrignal(HookNtCreateFile);
+    if (!original)
+    {
+        KdBreakPoint();
+        HYPERPLATFORM_LOG_INFO_SAFE("NtCreateFile正在调用，但是HOOK机制失效，估计是卸载操作已经发生，或者某些操作失败（我想你是知道的）.");
+        HYPERPLATFORM_LOG_INFO_SAFE("我想是应该调用原函数，具体的机制有待深入分析，应该如此。");
+        const auto result = NtCreateFile(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+        return result;
+    }
+
     const auto result = original(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
     auto return_addr = _ReturnAddress();
     void * p = UtilPcToFileHeader(return_addr);//这个地址当然是内核的基地址，经测试验证也是的。
@@ -68,7 +77,11 @@ template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler t
     {
         if (target.handler == handler)
         {
-            NT_ASSERT(target.original_call);//有时target.original_call == 0。
+            if (0 == target.original_call)
+            {
+                HYPERPLATFORM_LOG_ERROR("卸载（某些失败，你知道的）后会概率性的走这里。");
+            }
+
             return reinterpret_cast<T>(target.original_call);
         }
     }
@@ -87,7 +100,7 @@ void DdimonpFreeAllocatedTrampolineRegions()
         if (target.original_call)
         {
             ExFreePoolWithTag(target.original_call, kHyperPlatformCommonPoolTag);
-            target.original_call = nullptr;
+            target.original_call = nullptr;//这个很重要，良好的编程习惯。
         }
     }
 }
@@ -140,9 +153,12 @@ bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, PIM
 }
 
 
-NTSTATUS DdimonpEnumExportedSymbols(ULONG_PTR base_address, void* context)// Enumerates all exports in a module specified by base_address.
+NTSTATUS DdimonpEnumExportedSymbols(void* context)
 {
     PAGED_CODE();
+
+    ULONG_PTR base_address = (ULONG_PTR)UtilPcToFileHeader(KdDebuggerEnabled);//获取内核基地址是如此之简单，看来RtlPcToFileHeader还有别的用途，不信请细看。
+    ASSERT(base_address);
 
     auto dos = reinterpret_cast<PIMAGE_DOS_HEADER>(base_address);
     auto nt = reinterpret_cast<PIMAGE_NT_HEADERS>(base_address + dos->e_lfanew);
@@ -174,11 +190,8 @@ NTSTATUS DdimonpEnumExportedSymbols(ULONG_PTR base_address, void* context)// Enu
 
 EXTERN_C NTSTATUS DdimonInitialization(SharedShadowHookData* shared_sh_data)// Initializes DdiMon
 {
-    auto nt_base = UtilPcToFileHeader(KdDebuggerEnabled);//获取内核基地址是如此之简单，看来RtlPcToFileHeader还有别的用途，不信请细看。
-    ASSERT(nt_base);
-
     // Install hooks by enumerating exports of ntoskrnl, but not activate them yet
-    auto status = DdimonpEnumExportedSymbols(reinterpret_cast<ULONG_PTR>(nt_base), shared_sh_data);
+    auto status = DdimonpEnumExportedSymbols(shared_sh_data);
     if (!NT_SUCCESS(status)) {
         return status;
     }
