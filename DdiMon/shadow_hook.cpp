@@ -1,56 +1,10 @@
 // Copyright (c) 2015-2016, tandasat. All rights reserved.
 // Use of this source code is governed by a MIT-style license that can be found in the LICENSE file.
 
-/// @file
-/// Implements shadow hook functions.
-
 #include "shadow_hook.h"
 
 
-ShadowHookData* ShAllocateShadowHookData()// Allocates per-processor shadow hook data
-{
-    PAGED_CODE();
-    auto p = new ShadowHookData();
-    RtlFillMemory(p, sizeof(ShadowHookData), 0);
-    return p;
-}
-
-
-void ShFreeShadowHookData(ShadowHookData* sh_data)// Frees per-processor shadow hook data
-{
-    PAGED_CODE();
-    delete sh_data;
-}
-
-
-SharedShadowHookData* ShAllocateSharedShaowHookData()// Allocates processor-shared shadow hook data
-{
-    PAGED_CODE();
-    auto p = new SharedShadowHookData();
-    RtlFillMemory(p, sizeof(SharedShadowHookData), 0);
-    return p;
-}
-
-
-void ShFreeSharedShadowHookData(SharedShadowHookData* shared_sh_data)// Frees processor-shared shadow hook data
-{
-    PAGED_CODE();
-    delete shared_sh_data;
-}
-
-
-NTSTATUS ShEnableHooks()// Enables page shadowing for all hooks
-{
-    PAGED_CODE();
-    return UtilForEachProcessor([](void* context){UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShEnablePageShadowing, nullptr);}, nullptr);
-}
-
-
-NTSTATUS ShDisableHooks()// Disables page shadowing for all hooks
-{
-    PAGED_CODE();
-    return UtilForEachProcessor([](void* context) {UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShDisablePageShadowing, nullptr); }, nullptr);
-}
+//////////////////////////////////////////////////////////////////////////////////////////////////
 
 
 void ShpEnablePageShadowingForExec(const HookInformation& info, EptData* ept_data)// Show a shadowed page for execution
@@ -68,15 +22,6 @@ void ShpEnablePageShadowingForExec(const HookInformation& info, EptData* ept_dat
 }
 
 
-void ShEnablePageShadowing(EptData* ept_data, const SharedShadowHookData* shared_sh_data)// Enables page shadowing for all hooks
-{
-    for (auto& info : shared_sh_data->hooks)
-    {
-        ShpEnablePageShadowingForExec(*info, ept_data);
-    }
-}
-
-
 void ShpDisablePageShadowing(const HookInformation& info, EptData* ept_data)// Stop showing a shadow page
 {
     const auto pa_base = UtilPaFromVa(PAGE_ALIGN(info.patch_address));
@@ -86,15 +31,6 @@ void ShpDisablePageShadowing(const HookInformation& info, EptData* ept_data)// S
     ept_pt_entry->fields.physial_address = UtilPfnFromPa(pa_base);
 
     UtilInveptGlobal();
-}
-
-
-void ShVmCallDisablePageShadowing(EptData* ept_data, const SharedShadowHookData* shared_sh_data)// Disables page shadowing for all hooks
-{
-    for (auto& info : shared_sh_data->hooks)
-    {
-        ShpDisablePageShadowing(*info, ept_data);
-    }
 }
 
 
@@ -115,25 +51,6 @@ bool ShpIsShadowHookActive(const SharedShadowHookData* shared_sh_data)// Checks 
 }
 
 
-bool ShHandleBreakpoint(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, void* guest_ip)
-// Handles #BP. Checks if the #BP happened on where DdiMon set a break point, and if so, modifies the contents of guest's IP to execute a corresponding hook handler.
-{
-    UNREFERENCED_PARAMETER(sh_data);
-
-    if (!ShpIsShadowHookActive(shared_sh_data)) {
-        return false;
-    }
-
-    const auto info = ShpFindPatchInfoByAddress(shared_sh_data, guest_ip);
-    if (!info) {
-        return false;
-    }
-
-    UtilVmWrite(VmcsField::kGuestRip, reinterpret_cast<ULONG_PTR>(info->handler));// Update guest's IP
-    return true;
-}
-
-
 void ShpSetMonitorTrapFlag(ShadowHookData* sh_data, bool enable)// Set MTF on the current processor
 {
     VmxProcessorBasedControls vm_procctl = { static_cast<unsigned int>(UtilVmRead(VmcsField::kCpuBasedVmExecControl)) };
@@ -148,15 +65,6 @@ HookInformation* ShpRestoreLastHookInfo(ShadowHookData* sh_data)// Retrieves the
     auto info = sh_data->last_hook_info;
     sh_data->last_hook_info = nullptr;
     return info;
-}
-
-
-void ShHandleMonitorTrapFlag(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, EptData* ept_data)// Handles MTF VM-exit. Re-enables the shadow hook and clears MTF.
-{
-    NT_VERIFY(ShpIsShadowHookActive(shared_sh_data));
-    auto info = ShpRestoreLastHookInfo(sh_data);
-    ShpEnablePageShadowingForExec(*info, ept_data);
-    ShpSetMonitorTrapFlag(sh_data, false);
 }
 
 
@@ -191,25 +99,6 @@ void ShpSaveLastHookInfo(ShadowHookData* sh_data, HookInformation& info)// Saves
 }
 
 
-void ShHandleEptViolation(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, EptData* ept_data, void* fault_va)// Handles EPT violation VM-exit.
-{
-    if (!ShpIsShadowHookActive(shared_sh_data)) {
-        return;
-    }
-
-    const auto info = ShpFindPatchInfoByPage(shared_sh_data, fault_va);
-    if (!info) {
-        return;
-    }
-
-    // EPT violation was caused because a guest tried to read or write to a page where currently set as execute only for protecting a hook.
-    // Let a guest read or write a page from a read/write shadow page and run a single instruction.
-    ShpEnablePageShadowingForRW(*info, ept_data);
-    ShpSetMonitorTrapFlag(sh_data, true);
-    ShpSaveLastHookInfo(sh_data, *info);
-}
-
-
 std::unique_ptr<HookInformation> ShpCreateHookInformation(SharedShadowHookData* shared_sh_data, void* address, ShadowHookTarget* target)
 // Creates or reuses a couple of copied pages and initializes HookInformation
 {
@@ -238,10 +127,7 @@ SIZE_T ShpGetInstructionSize(void* address)// Returns a size of an instruction a
     PAGED_CODE();
 
     KFLOATING_SAVE float_save = {};
-    auto status = KeSaveFloatingPointState(&float_save);// Save floating point state
-    if (!NT_SUCCESS(status)) {
-        return 0;
-    }
+    auto status = KeSaveFloatingPointState(&float_save); ASSERT(NT_SUCCESS(status));
 
     // Disassemble at most 15 bytes to get an instruction size
     csh handle = {};
@@ -254,11 +140,7 @@ SIZE_T ShpGetInstructionSize(void* address)// Returns a size of an instruction a
     static const auto kLongestInstSize = 15;
     cs_insn* instructions = nullptr;
     const auto count = cs_disasm(handle, reinterpret_cast<uint8_t*>(address), kLongestInstSize, reinterpret_cast<uint64_t>(address), 1, &instructions);
-    if (count == 0) {
-        cs_close(&handle);
-        KeRestoreFloatingPointState(&float_save);
-        return 0;
-    }
+    ASSERT(count);
     
     const auto size = instructions[0].size;// Get a size of the first instruction
     cs_free(instructions, count);
@@ -338,24 +220,6 @@ bool ShpSetupInlineHook(void* patch_address, UCHAR* shadow_exec_page, void** ori
 }
 
 
-bool ShInstallHook(SharedShadowHookData* shared_sh_data, void* address, ShadowHookTarget* target)// Set up inline hook at the address without activating it
-{
-    PAGED_CODE();
-
-    auto info = ShpCreateHookInformation(shared_sh_data, address, target);
-    if (!info) {
-        return false;
-    }
-
-    if (!ShpSetupInlineHook(info->patch_address, info->shadow_page_base_for_exec->page, &target->original_call)) {
-        return false;
-    }
-
-    shared_sh_data->hooks.push_back(std::move(info));
-    return true;
-}
-
-
 Page::Page() : page(reinterpret_cast<UCHAR*>(ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, kHyperPlatformCommonPoolTag)))
 {
     ASSERT(page);
@@ -365,4 +229,135 @@ Page::Page() : page(reinterpret_cast<UCHAR*>(ExAllocatePoolWithTag(NonPagedPool,
 Page::~Page()
 {
     ExFreePoolWithTag(page, kHyperPlatformCommonPoolTag);
+}
+
+
+//以上是私有的函数。
+//////////////////////////////////////////////////////////////////////////////////////////////////
+//一下是导出的函数。
+
+
+ShadowHookData* ShAllocateShadowHookData()// Allocates per-processor shadow hook data
+{
+    PAGED_CODE();
+    auto p = new ShadowHookData();
+    RtlFillMemory(p, sizeof(ShadowHookData), 0);
+    return p;
+}
+
+
+void ShFreeShadowHookData(ShadowHookData* sh_data)// Frees per-processor shadow hook data
+{
+    PAGED_CODE();
+    delete sh_data;
+}
+
+
+SharedShadowHookData* ShAllocateSharedShaowHookData()// Allocates processor-shared shadow hook data
+{
+    PAGED_CODE();
+    auto p = new SharedShadowHookData();
+    RtlFillMemory(p, sizeof(SharedShadowHookData), 0);
+    return p;
+}
+
+
+void ShFreeSharedShadowHookData(SharedShadowHookData* shared_sh_data)// Frees processor-shared shadow hook data
+{
+    PAGED_CODE();
+    delete shared_sh_data;
+}
+
+
+NTSTATUS ShEnableHooks()// Enables page shadowing for all hooks
+{
+    PAGED_CODE();
+    return UtilForEachProcessor([](void* context) {UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShEnablePageShadowing, nullptr); }, nullptr);
+}
+
+
+NTSTATUS ShDisableHooks()// Disables page shadowing for all hooks
+{
+    PAGED_CODE();
+    return UtilForEachProcessor([](void* context) {UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShDisablePageShadowing, nullptr); }, nullptr);
+}
+
+
+void ShEnablePageShadowing(EptData* ept_data, const SharedShadowHookData* shared_sh_data)// Enables page shadowing for all hooks
+{
+    for (auto& info : shared_sh_data->hooks)
+    {
+        ShpEnablePageShadowingForExec(*info, ept_data);
+    }
+}
+
+
+void ShVmCallDisablePageShadowing(EptData* ept_data, const SharedShadowHookData* shared_sh_data)// Disables page shadowing for all hooks
+{
+    for (auto& info : shared_sh_data->hooks)
+    {
+        ShpDisablePageShadowing(*info, ept_data);
+    }
+}
+
+
+bool ShHandleBreakpoint(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, void* guest_ip)
+// Handles #BP. Checks if the #BP happened on where DdiMon set a break point, and if so, modifies the contents of guest's IP to execute a corresponding hook handler.
+{
+    UNREFERENCED_PARAMETER(sh_data);
+
+    if (!ShpIsShadowHookActive(shared_sh_data)) {
+        return false;
+    }
+
+    const auto info = ShpFindPatchInfoByAddress(shared_sh_data, guest_ip);
+    if (!info) {
+        return false;
+    }
+
+    UtilVmWrite(VmcsField::kGuestRip, reinterpret_cast<ULONG_PTR>(info->handler));// Update guest's IP
+    return true;
+}
+
+
+void ShHandleMonitorTrapFlag(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, EptData* ept_data)// Handles MTF VM-exit. Re-enables the shadow hook and clears MTF.
+{
+    NT_VERIFY(ShpIsShadowHookActive(shared_sh_data));
+    auto info = ShpRestoreLastHookInfo(sh_data);
+    ShpEnablePageShadowingForExec(*info, ept_data);
+    ShpSetMonitorTrapFlag(sh_data, false);
+}
+
+
+void ShHandleEptViolation(ShadowHookData* sh_data, const SharedShadowHookData* shared_sh_data, EptData* ept_data, void* fault_va)// Handles EPT violation VM-exit.
+{
+    if (!ShpIsShadowHookActive(shared_sh_data)) {
+        return;
+    }
+
+    const auto info = ShpFindPatchInfoByPage(shared_sh_data, fault_va);
+    if (!info) {
+        return;
+    }
+
+    // EPT violation was caused because a guest tried to read or write to a page where currently set as execute only for protecting a hook.
+    // Let a guest read or write a page from a read/write shadow page and run a single instruction.
+    ShpEnablePageShadowingForRW(*info, ept_data);
+    ShpSetMonitorTrapFlag(sh_data, true);
+    ShpSaveLastHookInfo(sh_data, *info);
+}
+
+
+bool ShInstallHook(_In_ SharedShadowHookData* shared_sh_data, _In_ void* address, _In_ ShadowHookTarget* target)// Set up inline hook at the address without activating it
+{
+    PAGED_CODE();
+
+    auto info = ShpCreateHookInformation(shared_sh_data, address, target); ASSERT(info);
+
+    if (!ShpSetupInlineHook(info->patch_address, info->shadow_page_base_for_exec->page, &target->original_call)) {
+        return false;
+    }
+
+    shared_sh_data->hooks.push_back(std::move(info));
+    return true;
 }
