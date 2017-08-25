@@ -36,9 +36,9 @@ NTSTATUS HookNtCreateFile(
     }
 
     const auto result = original(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
+
     auto return_addr = _ReturnAddress();
     void * p = UtilPcToFileHeader(return_addr);//这个地址当然是内核的基地址，经测试验证也是的。
-
     KdPrint(("NtCreateFile is inside image:%p.\r\n", p));
 
     return result;
@@ -89,7 +89,7 @@ template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler t
                 会出现啥情况？如何解决？
                 文件过滤驱动可以指定下一层，或更深的函数。
                 */
-                KdPrint(("卸载（某些失败，你知道的）后会概率性的走这里.\r\n"));
+                KdPrint(("卸载/（或某些失败，你知道的）后会概率性的走这里.\r\n"));
             }
 
             return reinterpret_cast<T>(target.original_call);
