@@ -37,10 +37,20 @@ void ShpDisablePageShadowing(const HookInformation& info, EptData* ept_data)// S
 HookInformation* ShpFindPatchInfoByAddress(const SharedShadowHookData* shared_sh_data, void* address)
 // Find a HookInformation instance that are on the same page as the address
 {
-    auto found = std::find_if(shared_sh_data->hooks.cbegin(), shared_sh_data->hooks.cend(), [address](const auto& info) { return info->patch_address == address; });
-    if (found == shared_sh_data->hooks.cend()) {
+    auto found = std::find_if(
+        shared_sh_data->hooks.cbegin(),
+        shared_sh_data->hooks.cend(),
+        [address](const auto& info) //函数名，无名函数，下面是函数体。
+    {
+        return info->patch_address == address;
+    }
+    );
+
+    if (found == shared_sh_data->hooks.cend())
+    {
         return nullptr;
     }
+
     return found->get();
 }
 

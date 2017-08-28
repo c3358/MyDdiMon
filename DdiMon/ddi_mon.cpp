@@ -191,7 +191,7 @@ NTSTATUS DdimonInitialization(SharedShadowHookData* context)
 {
     DdimonpEnumExportedSymbols(context);// Install hooks by enumerating exports of ntoskrnl, but not activate them yet
 
-    auto status = ShEnableHooks();// Activate installed hooks
+    NTSTATUS status = ShEnableHooks();// Activate installed hooks
     if (!NT_SUCCESS(status)) {
         DdimonpFreeAllocatedTrampolineRegions();
         return status;

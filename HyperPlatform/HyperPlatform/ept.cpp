@@ -366,8 +366,8 @@ _Use_decl_annotations_ static EptCommonEntry *EptpAllocateEptEntryFromPool() {
 }
 
 // Initialize an EPT entry with a "pass through" attribute
-_Use_decl_annotations_ static void EptpInitTableEntry(
-    EptCommonEntry *entry, ULONG table_level, ULONG64 physical_address) {
+_Use_decl_annotations_ static void EptpInitTableEntry(EptCommonEntry *entry, ULONG table_level, ULONG64 physical_address)
+{
   entry->fields.read_access = true;
   entry->fields.write_access = true;
   entry->fields.execute_access = true;

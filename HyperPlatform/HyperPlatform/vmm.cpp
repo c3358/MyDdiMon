@@ -108,8 +108,7 @@ static void VmmpHandleMsrReadAccess(_Inout_ GuestContext *guest_context);
 
 static void VmmpHandleMsrWriteAccess(_Inout_ GuestContext *guest_context);
 
-static void VmmpHandleMsrAccess(_Inout_ GuestContext *guest_context,
-                                _In_ bool read_access);
+static void VmmpHandleMsrAccess(_Inout_ GuestContext *guest_context, _In_ bool read_access);
 
 static void VmmpHandleGdtrOrIdtrAccess(_Inout_ GuestContext *guest_context);
 
@@ -1166,29 +1165,25 @@ _Use_decl_annotations_ static ULONG_PTR *VmmpSelectRegister(
     // clang-format on
 }
 
-// Advances guest's IP to the next instruction
-_Use_decl_annotations_ static void VmmpAdjustGuestInstructionPointer(GuestContext *guest_context)
-{
-  const auto exit_inst_length = UtilVmRead(VmcsField::kVmExitInstructionLen);
-  UtilVmWrite(VmcsField::kGuestRip, guest_context->ip + exit_inst_length);
 
-  // Inject #DB if TF is set
-  if (guest_context->flag_reg.fields.tf) {
-    VmmpInjectInterruption(InterruptionType::kHardwareException, InterruptionVector::kDebugException, false, 0);
-    UtilVmWrite(VmcsField::kVmEntryInstructionLen, exit_inst_length);
-  }
+_Use_decl_annotations_ static void VmmpAdjustGuestInstructionPointer(GuestContext *guest_context)// Advances guest's IP to the next instruction
+{
+    const auto exit_inst_length = UtilVmRead(VmcsField::kVmExitInstructionLen);
+    UtilVmWrite(VmcsField::kGuestRip, guest_context->ip + exit_inst_length);
+    
+    if (guest_context->flag_reg.fields.tf) {// Inject #DB if TF is set
+        VmmpInjectInterruption(InterruptionType::kHardwareException, InterruptionVector::kDebugException, false, 0);
+        UtilVmWrite(VmcsField::kVmEntryInstructionLen, exit_inst_length);
+    }
 }
 
-// Handle VMRESUME or VMXOFF failure. Fatal error.
-_Use_decl_annotations_ void __stdcall VmmVmxFailureHandler(
-    AllRegisters *all_regs) {
+
+_Use_decl_annotations_ void __stdcall VmmVmxFailureHandler(AllRegisters *all_regs)// Handle VMRESUME or VMXOFF failure. Fatal error.
+{
   const auto guest_ip = UtilVmRead(VmcsField::kGuestRip);
   // See: VM-Instruction Error Numbers
-  const auto vmx_error = (all_regs->flags.fields.zf)
-                             ? UtilVmRead(VmcsField::kVmInstructionError)
-                             : 0;
-  HYPERPLATFORM_COMMON_BUG_CHECK(
-      HyperPlatformBugCheck::kCriticalVmxInstructionFailure, vmx_error, 0, 0);
+  const auto vmx_error = (all_regs->flags.fields.zf) ? UtilVmRead(VmcsField::kVmInstructionError) : 0;
+  HYPERPLATFORM_COMMON_BUG_CHECK(HyperPlatformBugCheck::kCriticalVmxInstructionFailure, vmx_error, 0, 0);
 }
 
 // Saves all supported user state components (x87, SSE, AVX states)
@@ -1317,19 +1312,18 @@ _Use_decl_annotations_ static void VmmpHandleVmCallTermination(
 }
 
 // Injects interruption to a guest
-_Use_decl_annotations_ static void VmmpInjectInterruption(
-    InterruptionType interruption_type, InterruptionVector vector,
-    bool deliver_error_code, ULONG32 error_code) {
-  VmEntryInterruptionInformationField inject = {};
-  inject.fields.valid = true;
-  inject.fields.interruption_type = static_cast<ULONG32>(interruption_type);
-  inject.fields.vector = static_cast<ULONG32>(vector);
-  inject.fields.deliver_error_code = deliver_error_code;
-  UtilVmWrite(VmcsField::kVmEntryIntrInfoField, inject.all);
+_Use_decl_annotations_ static void VmmpInjectInterruption(InterruptionType interruption_type, InterruptionVector vector, bool deliver_error_code, ULONG32 error_code)
+{
+    VmEntryInterruptionInformationField inject = {};
+    inject.fields.valid = true;
+    inject.fields.interruption_type = static_cast<ULONG32>(interruption_type);
+    inject.fields.vector = static_cast<ULONG32>(vector);
+    inject.fields.deliver_error_code = deliver_error_code;
+    UtilVmWrite(VmcsField::kVmEntryIntrInfoField, inject.all);
 
-  if (deliver_error_code) {
-    UtilVmWrite(VmcsField::kVmEntryExceptionErrorCode, error_code);
-  }
+    if (deliver_error_code) {
+        UtilVmWrite(VmcsField::kVmEntryExceptionErrorCode, error_code);
+    }
 }
 
 }  // extern "C"

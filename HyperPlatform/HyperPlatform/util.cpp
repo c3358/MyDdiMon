@@ -787,18 +787,17 @@ _Use_decl_annotations_ void UtilWriteMsr64(Msr msr, ULONG64 value) {
 
 VmxStatus UtilInveptGlobal()// Executes the INVEPT instruction and invalidates EPT entry cache
 {
-  InvEptDescriptor desc = {};
-  return static_cast<VmxStatus>(AsmInvept(InvEptType::kGlobalInvalidation, &desc));
+    InvEptDescriptor desc = {};
+    return static_cast<VmxStatus>(AsmInvept(InvEptType::kGlobalInvalidation, &desc));
 }
 
-// Executes the INVVPID instruction (type 0)
-_Use_decl_annotations_ VmxStatus UtilInvvpidIndividualAddress(USHORT vpid,
-                                                              void *address) {
-  InvVpidDescriptor desc = {};
-  desc.vpid = vpid;
-  desc.linear_address = reinterpret_cast<ULONG64>(address);
-  return static_cast<VmxStatus>(
-      AsmInvvpid(InvVpidType::kIndividualAddressInvalidation, &desc));
+
+_Use_decl_annotations_ VmxStatus UtilInvvpidIndividualAddress(USHORT vpid, void *address)// Executes the INVVPID instruction (type 0)
+{
+    InvVpidDescriptor desc = {};
+    desc.vpid = vpid;
+    desc.linear_address = reinterpret_cast<ULONG64>(address);
+    return static_cast<VmxStatus>(AsmInvvpid(InvVpidType::kIndividualAddressInvalidation, &desc));
 }
 
 // Executes the INVVPID instruction (type 1)

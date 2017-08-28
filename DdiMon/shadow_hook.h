@@ -51,14 +51,14 @@ struct ShadowHookData {// Data structure for each processor
 #include <pshpack1.h>
 #if defined(_AMD64_)
 struct TrampolineCode {
-    UCHAR nop;
+    UCHAR nop; //这个是干啥用的？内存对齐？设置断点供调试使用？
     UCHAR jmp[6];
     void* address;
 };
 static_assert(sizeof(TrampolineCode) == 15, "Size check");
 #else
 struct TrampolineCode {
-    UCHAR nop;
+    UCHAR nop;//这个是干啥用的？内存对齐？设置断点供调试使用？
     UCHAR push;
     void* address;
     UCHAR ret;
