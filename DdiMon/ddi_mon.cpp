@@ -3,6 +3,7 @@
 
 #include "ddi_mon.h"
 
+extern "C" NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
 template <typename T> static T DdimonpFindOrignal(T handler);
 
 
@@ -37,9 +38,7 @@ NTSTATUS HookNtCreateFile(
 
     const auto result = original(FileHandle, DesiredAccess, ObjectAttributes, IoStatusBlock, AllocationSize, FileAttributes, ShareAccess, CreateDisposition, CreateOptions, EaBuffer, EaLength);
 
-    auto return_addr = _ReturnAddress();
-    void * p = UtilPcToFileHeader(return_addr);//这个地址当然是内核的基地址，经测试验证也是的。
-    KdPrint(("NtCreateFile is inside image:%p.\r\n", p));
+    KdPrint(("NtCreateFile pid:%8d, tid:%8d, 进程名：%-15s.\r\n", PsGetCurrentProcessId(), PsGetCurrentThreadId(), PsGetProcessImageFileName(PsGetCurrentProcess())));
 
     return result;
 }
@@ -108,6 +107,7 @@ void DdimonpFreeAllocatedTrampolineRegions()
 {
     PAGED_CODE();
 
+    //有时在想，这个操作是不是要提升下IRQL。
     for (auto& target : g_ddimonp_hook_targets)
     {
         if (target.fake_caller)
