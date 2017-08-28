@@ -70,10 +70,19 @@ HookInformation* ShpRestoreLastHookInfo(ShadowHookData* sh_data)// Retrieves the
 
 HookInformation* ShpFindPatchInfoByPage(const SharedShadowHookData* shared_sh_data, void* address)// Find a HookInformation instance by address
 {
-    const auto found = std::find_if(shared_sh_data->hooks.cbegin(), shared_sh_data->hooks.cend(), [address](const auto& info) {return PAGE_ALIGN(info->patch_address) == PAGE_ALIGN(address); });
+    const auto found = std::find_if(
+        shared_sh_data->hooks.cbegin(),
+        shared_sh_data->hooks.cend(),
+        [address](const auto& info) //这又是个函数，下面是函数体。
+    {
+        return PAGE_ALIGN(info->patch_address) == PAGE_ALIGN(address);
+    }
+    );
+
     if (found == shared_sh_data->hooks.cend()) {
         return nullptr;
     }
+
     return found->get();
 }
 
@@ -100,21 +109,23 @@ void ShpSaveLastHookInfo(ShadowHookData* sh_data, HookInformation& info)// Saves
 
 
 std::unique_ptr<HookInformation> ShpCreateHookInformation(SharedShadowHookData* shared_sh_data, void* address, ShadowHookTarget* target)
-// Creates or reuses a couple of copied pages and initializes HookInformation
+/*
+Creates or reuses a couple of copied pages and initializes HookInformation
+始终在想：如果address的后三位是fff,就像XXXXXXXXXXXXXfff，咋办？下面就复制一个字节，还有待细看，深入的看。
+*/
 {
-    auto info = std::make_unique<HookInformation>();
+    auto info = std::make_unique<HookInformation>(); ASSERT(info);
     auto reusable_info = ShpFindPatchInfoByPage(shared_sh_data, address);
-    if (reusable_info) {// Found an existing HookInformation object targeting the same page as this one. re-use shadow pages.
+    if (reusable_info) {//已经安装. re-use shadow pages.
         info->shadow_page_base_for_rw = reusable_info->shadow_page_base_for_rw;
         info->shadow_page_base_for_exec = reusable_info->shadow_page_base_for_exec;
-    } else {// This hook is for a page that is not currently have any hooks (i.e., not shadowed). Creates shadow pages.
+    } else {//还没有安装. Creates shadow pages.
         info->shadow_page_base_for_rw = std::make_shared<Page>();
         info->shadow_page_base_for_exec = std::make_shared<Page>();
-        auto page_base = PAGE_ALIGN(address);
-        RtlCopyMemory(info->shadow_page_base_for_rw->page, page_base, PAGE_SIZE);
-        RtlCopyMemory(info->shadow_page_base_for_exec->page, page_base, PAGE_SIZE);
+        RtlCopyMemory(info->shadow_page_base_for_rw->page, PAGE_ALIGN(address), PAGE_SIZE);
+        RtlCopyMemory(info->shadow_page_base_for_exec->page, PAGE_ALIGN(address), PAGE_SIZE);
     }
-    info->patch_address = address;
+    info->patch_address = address;//保存原始地址。
     info->pa_base_for_rw = UtilPaFromVa(info->shadow_page_base_for_rw->page);
     info->pa_base_for_exec = UtilPaFromVa(info->shadow_page_base_for_exec->page);
     info->handler = target->handler;
@@ -128,16 +139,16 @@ SIZE_T ShpGetInstructionSize(void* address)// Returns a size of an instruction a
 
     KFLOATING_SAVE float_save = {};
     auto status = KeSaveFloatingPointState(&float_save); ASSERT(NT_SUCCESS(status));
-
-    // Disassemble at most 15 bytes to get an instruction size
+    
     csh handle = {};
     const auto mode = IsX64() ? CS_MODE_64 : CS_MODE_32;
-    if (cs_open(CS_ARCH_X86, mode, &handle) != CS_ERR_OK) {
+    if (cs_open(CS_ARCH_X86, mode, &handle) != CS_ERR_OK)
+    {
         KeRestoreFloatingPointState(&float_save);
         return 0;
     }
 
-    static const auto kLongestInstSize = 15;
+    static const auto kLongestInstSize = 15;// Disassemble at most 15 bytes to get an instruction size
     cs_insn* instructions = nullptr;
     const auto count = cs_disasm(handle, reinterpret_cast<uint8_t*>(address), kLongestInstSize, reinterpret_cast<uint64_t>(address), 1, &instructions);
     ASSERT(count);
@@ -183,39 +194,34 @@ bool ShpSetupInlineHook(void* patch_address, UCHAR* shadow_exec_page, void** ori
 {
     PAGED_CODE();
 
-    const auto patch_size = ShpGetInstructionSize(patch_address);
-    if (!patch_size) {
-        return false;
-    }
+    SIZE_T patch_size = ShpGetInstructionSize(patch_address);//获取这个地址的第一条指令的长度。
+    ASSERT(patch_size);
 
-    // Build trampoline code (copied stub -> in the middle of original)
-    const auto jmp_to_original = ShpMakeTrampolineCode(reinterpret_cast<UCHAR*>(patch_address) + patch_size);
+    TrampolineCode jmp_to_original = ShpMakeTrampolineCode(reinterpret_cast<UCHAR*>(patch_address) + patch_size);//获取一个包含跳转指令的结构，当然是跳转到上面那个地址的第二条指令的地方。
+
 #pragma warning(push)
-#pragma warning(disable : 30030)  // Allocating executable POOL_TYPE memory
-    const auto original_call = ExAllocatePoolWithTag(NonPagedPoolExecute, patch_size + sizeof(jmp_to_original), kHyperPlatformCommonPoolTag);
+#pragma warning(disable : 30030)
+    const auto original_call = ExAllocatePoolWithTag(NonPagedPoolExecute, patch_size + sizeof(jmp_to_original), 'tag');
 #pragma warning(pop)
-    if (!original_call) {
-        return false;
-    }
+    ASSERT(original_call);
 
-    // Copy original code and embed jump code following original code
-    RtlCopyMemory(original_call, patch_address, patch_size);
+    RtlCopyMemory(original_call, patch_address, patch_size);//复制第一条指令。
+
 #pragma warning(push)
 #pragma warning(disable : 6386)
-    // Buffer overrun while writing to 'reinterpret_cast<UCHAR*>original_call+patch_size':  the writable size is
-    // 'patch_size+sizeof((jmp_to_original))' bytes, but '15' bytes might be written.
-    RtlCopyMemory(reinterpret_cast<UCHAR*>(original_call) + patch_size, &jmp_to_original, sizeof(jmp_to_original));
+    RtlCopyMemory(reinterpret_cast<UCHAR*>(original_call) + patch_size, &jmp_to_original, sizeof(jmp_to_original));//复制跳转结构/指令到第一条指令的后面。
 #pragma warning(pop)
-
-    // install patch to shadow page
+    
     static const UCHAR kBreakpoint[] = {
         0xcc,
-    };
+    };// install patch to shadow page
+    //这一页的最后一个指令设置为断点。如果这个位置是一个指令或指令的一部分咋办？看后面的处理。注意这个页是这哪里。
     RtlCopyMemory(shadow_exec_page + BYTE_OFFSET(patch_address), kBreakpoint, sizeof(kBreakpoint));
 
     KeInvalidateAllCaches();
 
     *original_call_ptr = original_call;
+
     return true;
 }
 
@@ -366,12 +372,11 @@ bool ShInstallHook(_In_ SharedShadowHookData* shared_sh_data, _In_ void* address
 {
     PAGED_CODE();
 
-    auto info = ShpCreateHookInformation(shared_sh_data, address, target); ASSERT(info);
+    std::unique_ptr<HookInformation> info = ShpCreateHookInformation(shared_sh_data, address, target); ASSERT(info);
 
-    if (!ShpSetupInlineHook(info->patch_address, info->shadow_page_base_for_exec->page, &target->original_call)) {
-        return false;
-    }
+    bool b = ShpSetupInlineHook(info->patch_address, info->shadow_page_base_for_exec->page, &target->original_call); ASSERT(b);
 
     shared_sh_data->hooks.push_back(std::move(info));
+
     return true;
 }

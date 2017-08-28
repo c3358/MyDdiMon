@@ -70,7 +70,7 @@ static_assert(sizeof(TrampolineCode) == 7, "Size check");
 struct ShadowHookTarget {      // Expresses where to install hooks by a function name, and its handlers
   UNICODE_STRING target_name;  // An export name to hook
   void* handler;               // An address of a hook handler
-  void* original_call;         // An address of a trampoline code to call original function. Initialized by a successful call of ShInstallHook().
+  void* original_call;         // An address of a trampoline code to call original function.
 };
 
 ShadowHookData* ShAllocateShadowHookData();

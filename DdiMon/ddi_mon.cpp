@@ -151,11 +151,7 @@ bool DdimonpEnumExportedSymbolsCallback(ULONG index, ULONG_PTR base_address, Sha
             continue;
         }
 
-        if (!ShInstallHook(context, export_address, &target))// Yes, install a hook to the export
-        {
-            DdimonpFreeAllocatedTrampolineRegions();// This is an error which should not happen
-            return false;
-        }
+        bool b = ShInstallHook(context, export_address, &target); ASSERT(b);
     }
 
     return true;
@@ -177,7 +173,8 @@ void DdimonpEnumExportedSymbols(SharedShadowHookData* context)
     auto exp_dir = reinterpret_cast<PIMAGE_EXPORT_DIRECTORY>(base_address + dir->VirtualAddress);
     for (auto i = 0ul; i < exp_dir->NumberOfNames; i++)
     {
-        if (!DdimonpEnumExportedSymbolsCallback(i, base_address, context))
+        bool b = DdimonpEnumExportedSymbolsCallback(i, base_address, context);
+        if (!b)
         {
             return;
         }
