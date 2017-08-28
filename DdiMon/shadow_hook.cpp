@@ -272,14 +272,28 @@ void ShFreeSharedShadowHookData(SharedShadowHookData* shared_sh_data)// Frees pr
 NTSTATUS ShEnableHooks()// Enables page shadowing for all hooks
 {
     PAGED_CODE();
-    return UtilForEachProcessor([](void* context) {UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShEnablePageShadowing, nullptr); }, nullptr);
+    return UtilForEachProcessor(
+        [](void* context) //第一个参数是回调函数，在各个CPU上运行一次。这个是无名的回调函数，下面是函数体。
+    {
+        UNREFERENCED_PARAMETER(context);
+        return UtilVmCall(HypercallNumber::kShEnablePageShadowing, nullptr);
+    },
+        nullptr //第二个参数：回调的上下文。
+        );
 }
 
 
 NTSTATUS ShDisableHooks()// Disables page shadowing for all hooks
 {
     PAGED_CODE();
-    return UtilForEachProcessor([](void* context) {UNREFERENCED_PARAMETER(context); return UtilVmCall(HypercallNumber::kShDisablePageShadowing, nullptr); }, nullptr);
+    return UtilForEachProcessor(
+        [](void* context)//第一个参数是回调函数，在各个CPU上运行一次。这个是无名的回调函数，下面是函数体。
+    {
+        UNREFERENCED_PARAMETER(context);
+        return UtilVmCall(HypercallNumber::kShDisablePageShadowing, nullptr);
+    },
+        nullptr//第二个参数：回调的上下文。
+        );
 }
 
 
