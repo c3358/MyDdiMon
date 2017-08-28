@@ -138,7 +138,7 @@ Creates or reuses a couple of copied pages and initializes HookInformation
     info->patch_address = address;//保存原始地址。
     info->pa_base_for_rw = UtilPaFromVa(info->shadow_page_base_for_rw->page);
     info->pa_base_for_exec = UtilPaFromVa(info->shadow_page_base_for_exec->page);
-    info->handler = target->handler;
+    info->HookFunction = target->hook_handler;
     return info;
 }
 
@@ -172,7 +172,7 @@ SIZE_T ShpGetInstructionSize(void* address)// Returns a size of an instruction a
 }
 
 
-TrampolineCode ShpMakeTrampolineCode(void* hook_handler)// Returns code bytes for inline hooking
+TrampolineCode ShpMakeTrampolineCode(void* HookHandler)// Returns code bytes for inline hooking
 {
     PAGED_CODE();
 
@@ -186,14 +186,14 @@ TrampolineCode ShpMakeTrampolineCode(void* hook_handler)// Returns code bytes fo
         {
             0xff, 0x25, 0x00, 0x00, 0x00, 0x00,
         },
-        hook_handler,
+        HookHandler,
     };
 #else
     // 90               nop
     // 6832e30582       push    offset nt!ExFreePoolWithTag + 0x2 (8205e332)
     // c3               ret
     return{
-        0x90, 0x68, hook_handler, 0xc3,
+        0x90, 0x68, HookHandler, 0xc3,
     };
 #endif
 }
@@ -211,26 +211,25 @@ bool ShpSetupInlineHook(void* patch_address, UCHAR* shadow_exec_page, void** ori
 
 #pragma warning(push)
 #pragma warning(disable : 30030)
-    const auto original_call = ExAllocatePoolWithTag(NonPagedPoolExecute, patch_size + sizeof(jmp_to_original), 'tag');
+    const auto fake_call = ExAllocatePoolWithTag(NonPagedPoolExecute, patch_size + sizeof(jmp_to_original), 'tag');
 #pragma warning(pop)
-    ASSERT(original_call);
+    ASSERT(fake_call);
 
-    RtlCopyMemory(original_call, patch_address, patch_size);//复制第一条指令。
+    RtlCopyMemory(fake_call, patch_address, patch_size);//复制第一条指令。
 
 #pragma warning(push)
 #pragma warning(disable : 6386)
-    RtlCopyMemory(reinterpret_cast<UCHAR*>(original_call) + patch_size, &jmp_to_original, sizeof(jmp_to_original));//复制跳转结构/指令到第一条指令的后面。
+    RtlCopyMemory(reinterpret_cast<UCHAR*>(fake_call) + patch_size, &jmp_to_original, sizeof(jmp_to_original));//复制跳转结构/指令到第一条指令的后面。
 #pragma warning(pop)
     
     static const UCHAR kBreakpoint[] = {
         0xcc,
     };// install patch to shadow page
-    //这一页的最后一个指令设置为断点。如果这个位置是一个指令或指令的一部分咋办？看后面的处理。注意这个页是这哪里。
-    RtlCopyMemory(shadow_exec_page + BYTE_OFFSET(patch_address), kBreakpoint, sizeof(kBreakpoint));
+    RtlCopyMemory(shadow_exec_page + BYTE_OFFSET(patch_address), kBreakpoint, sizeof(kBreakpoint));//设置这个页上的这个函数起始地址的第一个指令为断点。
 
     KeInvalidateAllCaches();
 
-    *original_call_ptr = original_call;
+    *original_call_ptr = fake_call;
 
     return true;
 }
@@ -345,7 +344,8 @@ bool ShHandleBreakpoint(ShadowHookData* sh_data, const SharedShadowHookData* sha
         return false;
     }
 
-    UtilVmWrite(VmcsField::kGuestRip, reinterpret_cast<ULONG_PTR>(info->handler));// Update guest's IP
+    UtilVmWrite(VmcsField::kGuestRip, reinterpret_cast<ULONG_PTR>(info->HookFunction));// Update guest's IP
+
     return true;
 }
 
@@ -384,7 +384,7 @@ bool ShInstallHook(_In_ SharedShadowHookData* shared_sh_data, _In_ void* address
 
     std::unique_ptr<HookInformation> info = ShpCreateHookInformation(shared_sh_data, address, target); ASSERT(info);
 
-    bool b = ShpSetupInlineHook(info->patch_address, info->shadow_page_base_for_exec->page, &target->original_call); ASSERT(b);
+    bool b = ShpSetupInlineHook(info->patch_address, info->shadow_page_base_for_exec->page, &target->fake_caller); ASSERT(b);
 
     shared_sh_data->hooks.push_back(std::move(info));
 

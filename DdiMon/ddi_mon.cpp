@@ -79,9 +79,9 @@ template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler t
 {
     for (const auto& target : g_ddimonp_hook_targets)
     {
-        if (target.handler == handler)
+        if (target.hook_handler == handler)
         {
-            if (0 == target.original_call)
+            if (0 == target.fake_caller)
             {
                 /*
                 试想：
@@ -95,7 +95,7 @@ template <typename T> static T DdimonpFindOrignal(T handler)// Finds a handler t
                 //KdPrint(("卸载/（或某些失败，你知道的）后会概率性的走这里.\r\n"));
             }
 
-            return reinterpret_cast<T>(target.original_call);
+            return reinterpret_cast<T>(target.fake_caller);
         }
     }
 
@@ -110,10 +110,10 @@ void DdimonpFreeAllocatedTrampolineRegions()
 
     for (auto& target : g_ddimonp_hook_targets)
     {
-        if (target.original_call)
+        if (target.fake_caller)
         {
-            ExFreePoolWithTag(target.original_call, kHyperPlatformCommonPoolTag);
-            target.original_call = nullptr;//这个很重要，良好的编程习惯。
+            ExFreePoolWithTag(target.fake_caller, kHyperPlatformCommonPoolTag);
+            target.fake_caller = nullptr;//这个很重要，良好的编程习惯。
         }
     }
 }

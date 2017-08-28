@@ -26,11 +26,11 @@ struct Page {// Copy of a page seen by a guest as a result of memory shadowing
 };
 
 struct HookInformation {  // Contains a single steal thook information
-    void* patch_address;  // An address where a hook is installed
-    void* handler;        // An address of the handler routine
+    void* patch_address;  // 要被hook函数的地址。
+    void* HookFunction;   // 自己写的hook 函数的地址。
 
-                          // A copy of a pages where patch_address belongs to.
-                          // shadow_page_base_for_rw is exposed to a guest for read and write operation against the page of patch_address, and shadow_page_base_for_exec is exposed for execution.
+    // A copy of a pages where patch_address belongs to.
+    // shadow_page_base_for_rw is exposed to a guest for read and write operation against the page of patch_address, and shadow_page_base_for_exec is exposed for execution.
     std::shared_ptr<Page> shadow_page_base_for_rw;
     std::shared_ptr<Page> shadow_page_base_for_exec;
 
@@ -67,10 +67,10 @@ static_assert(sizeof(TrampolineCode) == 7, "Size check");
 #endif
 #include <poppack.h>
 
-struct ShadowHookTarget {      // Expresses where to install hooks by a function name, and its handlers
-  UNICODE_STRING target_name;  // An export name to hook
-  void* handler;               // An address of a hook handler
-  void* original_call;         // An address of a trampoline code to call original function.
+struct ShadowHookTarget {
+  UNICODE_STRING target_name;  // 注释见别处。
+  void* hook_handler;          // 自己写的处理函数。
+  void* fake_caller;           // 中间的临时转换函数，调用原始函数。
 };
 
 ShadowHookData* ShAllocateShadowHookData();
