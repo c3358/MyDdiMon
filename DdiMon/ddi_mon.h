@@ -17,5 +17,21 @@
 #include "../HyperPlatform/HyperPlatform/ept.h"
 #include "shadow_hook.h"
 
+extern "C" NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
+
+extern "C" NTSYSAPI NTSTATUS NTAPI NtCreateEvent(
+    _Out_ PHANDLE EventHandle,
+    _In_ ACCESS_MASK DesiredAccess,
+    _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_ EVENT_TYPE EventType,
+    _In_ BOOLEAN InitialState
+);
+
+template <typename T> static T DdimonpFindOrignal(T handler);
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////
+
+
 NTSTATUS DdimonInitialization(_In_ SharedShadowHookData* shared_sh_data);
 void DdimonTermination();

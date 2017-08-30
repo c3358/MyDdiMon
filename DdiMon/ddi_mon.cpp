@@ -3,11 +3,33 @@
 
 #include "ddi_mon.h"
 
-extern "C" NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
-template <typename T> static T DdimonpFindOrignal(T handler);
-
 
 //////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+NTSTATUS HookNtCreateEvent(
+    _Out_    PHANDLE            EventHandle,
+    _In_     ACCESS_MASK        DesiredAccess,
+    _In_opt_ POBJECT_ATTRIBUTES ObjectAttributes,
+    _In_     EVENT_TYPE         EventType,
+    _In_     BOOLEAN            InitialState
+)
+{
+    const auto original = DdimonpFindOrignal(HookNtCreateEvent);
+    if (!original)
+    {
+        HYPERPLATFORM_LOG_DEBUG("NtCreateEvent正在调用，但是HOOK机制失效，估计是卸载操作已经发生，或者某些操作失败（我想你是知道的）.\r\n");
+        HYPERPLATFORM_LOG_DEBUG("我想是应该调用原函数，具体的机制还没有深入分析，但是经测试还是可以的，走这里没出现啥问题.\r\n");
+        const auto result = NtCreateEvent(EventHandle, DesiredAccess, ObjectAttributes, EventType, InitialState);
+        return result;
+    }
+
+    const auto result = original(EventHandle, DesiredAccess, ObjectAttributes, EventType, InitialState);
+
+    HYPERPLATFORM_LOG_DEBUG("NtCreateEvent");
+
+    return result;
+}
 
 
 NTSTATUS HookNtCreateFile(
@@ -70,7 +92,8 @@ NTSTATUS HookNtCreateFile(
 5.有时间改进下，改进为无论函数导出与否，都支持，只要有地址，因为有好些没有导出的函数。
 */
 ShadowHookTarget g_ddimonp_hook_targets[] = {
-    { RTL_CONSTANT_STRING(L"NTCREATEFILE"),   HookNtCreateFile,  nullptr },//NtCreateFile
+    { RTL_CONSTANT_STRING(L"NTCREATEFILE"),    HookNtCreateFile,    nullptr },//NtCreateFile
+    { RTL_CONSTANT_STRING(L"NTCREATEEVENT"),   HookNtCreateEvent,   nullptr },//NtCreateEvent
 };
 
 
